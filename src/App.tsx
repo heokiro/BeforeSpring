@@ -1,6 +1,7 @@
 import { Canvas } from '@react-three/fiber';
 import { ExhibitionContainer } from './components/layout/ExhibitionContainer';
 import { ParticleSystem } from './components/visual/ParticleSystem';
+import { BackgroundColor } from './components/visual/BackgroundColor';
 import { ExhibitionText } from './components/ui/ExhibitionText';
 import { AudioPlayer } from './components/audio/AudioPlayer';
 import { SpringButton } from './components/ui/SpringButton';
@@ -16,7 +17,7 @@ function App() {
         className="absolute inset-0"
         gl={{ antialias: true, alpha: true }}
       >
-        <color attach="background" args={['#050508']} />
+        <BackgroundColor />
         <ParticleSystem />
       </Canvas>
 
