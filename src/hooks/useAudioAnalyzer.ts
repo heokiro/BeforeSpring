@@ -14,7 +14,7 @@ export function useAudioAnalyzer() {
   const dataArrayRef = useRef<Uint8Array | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const lastBassRef = useRef(0);
-  const beatThresholdRef = useRef(0.5);
+  const beatThresholdRef = useRef(0.02);
 
   const initialize = useCallback((audioElement: HTMLAudioElement) => {
     // 이미 초기화되었으면 스킵
@@ -54,11 +54,16 @@ export function useAudioAnalyzer() {
     const treble = averageRange(data, 100, 512) / 255;
     const energy = (bass * 0.5 + mid * 0.3 + treble * 0.2);
 
-    // 비트 감지 (bass 피크 감지)
-    const bassThreshold = lastBassRef.current * 1.2 + beatThresholdRef.current;
-    const isBeat = bass > bassThreshold && bass > 0.4;
+    // 비트 감지 (bass 급상승 감지)
+    const bassDiff = bass - lastBassRef.current;
+    const isBeat = bassDiff > beatThresholdRef.current && bass > 0.3;
 
-    // 적응형 임계값 업데이트
+    // 디버그 로그 (5% 확률로 출력)
+    if (Math.random() < 0.05) {
+      console.log('Audio:', { bass: bass.toFixed(3), diff: bassDiff.toFixed(3), isBeat, energy: energy.toFixed(3) });
+    }
+
+    // 적응형 임계값 업데이트 (느리게 따라가서 diff가 커지도록)
     lastBassRef.current = bass * 0.1 + lastBassRef.current * 0.9;
 
     return { bass, mid, treble, isBeat, energy };

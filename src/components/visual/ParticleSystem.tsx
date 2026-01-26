@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { useAudioStore } from '../../stores/audioStore';
 import { particleSettings } from '../ui/ControlPanel';
 
-const PARTICLE_COUNT = 3000;
+const MAX_PARTICLE_COUNT = 10000;
 
 export function ParticleSystem() {
   const pointsRef = useRef<THREE.Points>(null);
@@ -14,12 +14,12 @@ export function ParticleSystem() {
 
   // 파티클 데이터
   const particleData = useMemo(() => {
-    const positions = new Float32Array(PARTICLE_COUNT * 3);
-    const velocities = new Float32Array(PARTICLE_COUNT * 3);
-    const sizes = new Float32Array(PARTICLE_COUNT);
-    const offsets = new Float32Array(PARTICLE_COUNT);
+    const positions = new Float32Array(MAX_PARTICLE_COUNT * 3);
+    const velocities = new Float32Array(MAX_PARTICLE_COUNT * 3);
+    const sizes = new Float32Array(MAX_PARTICLE_COUNT);
+    const offsets = new Float32Array(MAX_PARTICLE_COUNT);
 
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
+    for (let i = 0; i < MAX_PARTICLE_COUNT; i++) {
       positions[i * 3] = (Math.random() - 0.5) * 20;
       positions[i * 3 + 1] = Math.random() * 20 - 10;
       positions[i * 3 + 2] = (Math.random() - 0.5) * 10;
@@ -101,7 +101,10 @@ export function ParticleSystem() {
           // 크기 계산 (비트 펌프 효과 추가)
           float energySize = 1.0 + uEnergy * 0.4;
           float springBonus = uTransition * 0.2;
-          float beatSize = 1.0 + uBeatPump * uBeatPumpSize;  // 비트에 맞춰 커짐 (UI로 조절)
+
+          // 파티클별로 다른 비트 펌프 강도 (약 40%만 강하게 반응)
+          float beatResponse = smoothstep(0.3, 0.7, fract(aOffset * 3.14159));
+          float beatSize = 1.0 + uBeatPump * uBeatPumpSize * beatResponse;
 
           gl_PointSize = aSize * uSizeMultiplier * energySize * beatSize * (1.0 + springBonus) * (350.0 / -mvPosition.z);
 
@@ -109,7 +112,7 @@ export function ParticleSystem() {
 
           vAlpha = smoothstep(-8.0, 6.0, position.y) * 0.9;
           vTransition = uTransition;
-          vBeatPump = uBeatPump;
+          vBeatPump = uBeatPump * beatResponse;  // 파티클별로 다른 밝기 반응
         }
       `,
       fragmentShader: `
@@ -155,7 +158,10 @@ export function ParticleSystem() {
   useFrame((state) => {
     if (!pointsRef.current) return;
 
-    const { size, speed, rhythmStrength, swayAmount, beatPumpSize, beatPumpSpeed } = particleSettings;
+    const { size, speed, rhythmStrength, swayAmount, beatPumpSize, beatPumpSpeed, particleCount } = particleSettings;
+
+    // 렌더링할 파티클 수 설정
+    pointsRef.current.geometry.setDrawRange(0, particleCount);
 
     // 모드 전환
     const targetTransition = isSpringMode ? 1 : 0;
@@ -172,7 +178,7 @@ export function ParticleSystem() {
     const positions = posAttr.array as Float32Array;
     const { velocities } = particleData;
 
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
+    for (let i = 0; i < particleCount; i++) {
       const i3 = i * 3;
 
       // 속도 (비트 펌프 시 약간 느려짐 - 확대되는 순간 정지 느낌)

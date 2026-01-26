@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAudioStore } from '../../stores/audioStore';
 
 export interface ParticleSettings {
@@ -8,26 +8,96 @@ export interface ParticleSettings {
   swayAmount: number;    // 좌우 흔들림 (0 ~ 2)
   beatPumpSize: number;  // 비트 펌프 크기 (0 ~ 2)
   beatPumpSpeed: number; // 비트 펌프 복귀 속도 (0.01 ~ 0.3)
+  particleCount: number; // 파티클 수 (1000 ~ 10000)
 }
 
-const DEFAULT_SETTINGS: ParticleSettings = {
-  size: 1.5,
-  speed: 0.5,
-  rhythmStrength: 1.5,
-  swayAmount: 1,
-  beatPumpSize: 0.8,
-  beatPumpSpeed: 0.08,
+// 겨울 모드 (눈)
+const WINTER_SETTINGS: ParticleSettings = {
+  size: 1.7,
+  speed: 0.2,
+  rhythmStrength: 0.1,
+  swayAmount: 0.1,
+  beatPumpSize: 0.7,
+  beatPumpSpeed: 0.01,
+  particleCount: 2500,
+};
+
+// 봄 모드 (벚꽃)
+const SPRING_SETTINGS: ParticleSettings = {
+  size: 1.1,
+  speed: 0.4,
+  rhythmStrength: 1.3,
+  swayAmount: 0.6,
+  beatPumpSize: 0.5,
+  beatPumpSpeed: 0.01,
+  particleCount: 6500,
 };
 
 // 전역으로 설정 공유
-export let particleSettings: ParticleSettings = { ...DEFAULT_SETTINGS };
+export let particleSettings: ParticleSettings = { ...WINTER_SETTINGS };
+
+// lerp 함수
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+// 설정값 lerp
+const lerpSettings = (current: ParticleSettings, target: ParticleSettings, t: number): ParticleSettings => ({
+  size: lerp(current.size, target.size, t),
+  speed: lerp(current.speed, target.speed, t),
+  rhythmStrength: lerp(current.rhythmStrength, target.rhythmStrength, t),
+  swayAmount: lerp(current.swayAmount, target.swayAmount, t),
+  beatPumpSize: lerp(current.beatPumpSize, target.beatPumpSize, t),
+  beatPumpSpeed: lerp(current.beatPumpSpeed, target.beatPumpSpeed, t),
+  particleCount: Math.round(lerp(current.particleCount, target.particleCount, t)),
+});
 
 export function ControlPanel() {
-  const { isPlaying } = useAudioStore();
+  const { isPlaying, isSpringMode } = useAudioStore();
   const [isOpen, setIsOpen] = useState(false);
-  const [settings, setSettings] = useState<ParticleSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<ParticleSettings>(WINTER_SETTINGS);
+  const targetSettingsRef = useRef<ParticleSettings>(WINTER_SETTINGS);
+  const isTransitioningRef = useRef(false);
+
+  // 모드 전환 시 부드러운 설정 변경
+  useEffect(() => {
+    const targetSettings = isSpringMode ? SPRING_SETTINGS : WINTER_SETTINGS;
+    targetSettingsRef.current = targetSettings;
+
+    // 이미 전환 중이면 목표만 변경
+    if (isTransitioningRef.current) return;
+
+    isTransitioningRef.current = true;
+    const transitionSpeed = 0.02; // 전환 속도 (낮을수록 부드러움)
+
+    const animate = () => {
+      // 사용자가 직접 수정했으면 애니메이션 중지
+      if (!isTransitioningRef.current) return;
+
+      const current = particleSettings;
+      const target = targetSettingsRef.current;
+
+      // 목표에 거의 도달했는지 확인
+      const diff = Math.abs(current.particleCount - target.particleCount);
+      if (diff < 10) {
+        particleSettings = { ...target };
+        setSettings({ ...target });
+        isTransitioningRef.current = false;
+        return;
+      }
+
+      // lerp로 부드럽게 전환
+      const newSettings = lerpSettings(current, target, transitionSpeed);
+      particleSettings = newSettings;
+      setSettings(newSettings);
+
+      requestAnimationFrame(animate);
+    };
+
+    requestAnimationFrame(animate);
+  }, [isSpringMode]);
 
   const updateSetting = (key: keyof ParticleSettings, value: number) => {
+    // 사용자가 직접 수정하면 자동 전환 중지
+    isTransitioningRef.current = false;
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
     particleSettings = newSettings;
@@ -53,6 +123,23 @@ export function ControlPanel() {
       {isOpen && (
         <div className="absolute top-16 left-4 z-50 bg-black/80 backdrop-blur-md rounded-xl p-5 w-72 border border-white/20 max-h-[80vh] overflow-y-auto">
           <h3 className="text-white font-medium mb-4 text-sm tracking-wide">파티클 설정</h3>
+
+          {/* 파티클 수 */}
+          <div className="mb-4">
+            <div className="flex justify-between text-white/70 text-xs mb-1">
+              <span>파티클 수</span>
+              <span>{settings.particleCount.toLocaleString()}</span>
+            </div>
+            <input
+              type="range"
+              min="1000"
+              max="10000"
+              step="500"
+              value={settings.particleCount}
+              onChange={(e) => updateSetting('particleCount', parseInt(e.target.value))}
+              className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-pink-400"
+            />
+          </div>
 
           {/* 크기 */}
           <div className="mb-4">
@@ -165,6 +252,7 @@ export function ControlPanel() {
             onClick={() => {
               const code = `// 파티클 설정값
 const settings = {
+  particleCount: ${settings.particleCount},
   size: ${settings.size},
   speed: ${settings.speed},
   rhythmStrength: ${settings.rhythmStrength},
