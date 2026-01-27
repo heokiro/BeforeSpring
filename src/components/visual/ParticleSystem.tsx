@@ -6,14 +6,16 @@ import { particleSettings } from '../ui/ControlPanel';
 
 const MAX_PARTICLE_COUNT = 10000;
 
+// 카메라/화면 설정 (App.tsx의 Canvas와 일치)
+const CAMERA_Z = 8;
+const FOV_RAD = 60 * Math.PI / 180;
+const GROUND_UV = 0.01; // 배경 땅 경계 (BackgroundColor.tsx의 groundLine과 일치)
+
 export function ParticleSystem() {
   const pointsRef = useRef<THREE.Points>(null);
   const { bass, energy, isBeat, isSpringMode } = useAudioStore();
   const transitionRef = useRef(0);
   const beatPumpRef = useRef(0); // 비트 펌프 값
-
-  // 바닥 높이 (쌓인 눈)
-  const groundHeightRef = useRef(-7);
   const settledCountRef = useRef(0);
 
   // 파티클 데이터
@@ -248,7 +250,6 @@ export function ParticleSystem() {
     // 봄이 되면 쌓인 눈 리셋
     if (!isWinter && settledCountRef.current > 0) {
       settledCountRef.current = 0;
-      groundHeightRef.current = -7;
       for (let i = 0; i < particleCount; i++) {
         settled[i] = 0;
       }
@@ -282,21 +283,22 @@ export function ParticleSystem() {
       // 경계 처리
       if (direction < 0) {
         // 겨울: 아래로 떨어짐
-        // 바닥 높이 계산 (가운데가 높고 가장자리가 낮음)
-        const distFromCenter = Math.sqrt(positions[i3] * positions[i3] + positions[i3 + 2] * positions[i3 + 2]);
-        const localGroundHeight = groundHeightRef.current + Math.max(0, 1.5 - distFromCenter * 0.15);
+        // 파티클의 z에 따른 화면상 바닥 위치 계산 (원근법 적용)
+        const distToCamera = CAMERA_Z - positions[i3 + 2];
+        const screenHalfHeight = Math.tan(FOV_RAD / 2) * distToCamera;
 
-        if (positions[i3 + 1] < localGroundHeight) {
+        // 파티클 y를 화면 UV로 변환 (0 = 하단, 1 = 상단)
+        const uvY = (positions[i3 + 1] + screenHalfHeight) / (2 * screenHalfHeight);
+
+        // 땅 경계(UV 0.15) 아래면 정착
+        if (uvY < GROUND_UV) {
           // 화면 안쪽에 있으면 정착
           if (Math.abs(positions[i3]) < 8 && Math.abs(positions[i3 + 2]) < 4) {
             settled[i] = 1;
-            positions[i3 + 1] = localGroundHeight + Math.random() * 0.1;
+            // 정확히 땅 경계 위치로 이동
+            const groundY = GROUND_UV * (2 * screenHalfHeight) - screenHalfHeight;
+            positions[i3 + 1] = groundY + Math.random() * 0.1;
             settledCountRef.current++;
-
-            // 일정량 쌓이면 바닥 높이 상승
-            if (settledCountRef.current % 50 === 0) {
-              groundHeightRef.current = Math.min(-4, groundHeightRef.current + 0.05);
-            }
           } else {
             // 화면 밖이면 리스폰
             positions[i3 + 1] = 10 + Math.random() * 5;
