@@ -28,6 +28,8 @@ export function ParticleSystem() {
   const windBoostRef = useRef(0); // 봄 모드 산들바람 효과
   const settledCountRef = useRef(0);
   const hasStartedRef = useRef(false); // 음악 시작 여부 추적
+  const prevSpringModeRef = useRef(false); // 이전 봄 모드 상태 (전환 감지용)
+  const updraftBoostRef = useRef(0); // 상승기류 효과 (겨울→봄 전환 시 한 번)
 
   // 벚꽃 텍스처 로드
   const sakuraTex = useLoader(THREE.TextureLoader, sakuraTexture);
@@ -295,6 +297,15 @@ export function ParticleSystem() {
     const targetTransition = isSpringMode ? 1 : 0;
     transitionRef.current = THREE.MathUtils.lerp(transitionRef.current, targetTransition, 0.02);
 
+    // 겨울→봄 전환 감지: 상승기류 효과 발동
+    if (isSpringMode && !prevSpringModeRef.current) {
+      updraftBoostRef.current = 1.0; // 상승기류 시작
+    }
+    prevSpringModeRef.current = isSpringMode;
+
+    // 상승기류 효과 감쇠
+    updraftBoostRef.current = THREE.MathUtils.lerp(updraftBoostRef.current, 0, 0.015);
+
     // 비트 펌프 효과 (비트 감지 시 1로 점프, 그 후 부드럽게 감소)
     if (isBeat) {
       beatPumpRef.current = 1.0;
@@ -350,7 +361,10 @@ export function ParticleSystem() {
       const windMultiplier = isWinter ? 1.0 : (1.0 + windBoostRef.current * 0.8);
       const baseSpeed = velocities[i3 + 1] * speed * rhythmBoost * beatSlowdown * windMultiplier;
 
-      positions[i3 + 1] += baseSpeed * direction;
+      // 상승기류 효과 (겨울→봄 전환 시 강한 상승)
+      const updraftSpeed = updraftBoostRef.current * 0.15 * (0.5 + Math.random() * 0.5);
+
+      positions[i3 + 1] += baseSpeed * direction + updraftSpeed;
 
       // 좌우 흔들림 (봄 모드: 개별 흔들림 가속)
       const swayMultiplier = isWinter ? 1.0 : (1.0 + windBoostRef.current * 1.5);
