@@ -18,3 +18,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* 전시 텍스트용 세리프 폰트 */
+.font-exhibition {
+  font-family: 'Noto Serif KR', serif;
+}

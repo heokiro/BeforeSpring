@@ -26,3 +26,4 @@ dist-ssr
 # Large audio files
 public/audio/*.wav
 public/audio/*.mp3
+.firebase/
