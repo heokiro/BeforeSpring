@@ -273,26 +273,19 @@ export function ParticleSystem() {
 
     const { size, speed, rhythmStrength, swayAmount, beatPumpSize, beatPumpSpeed, particleCount, springScaleGrow } = particleSettings;
 
-    // 음악이 재생되지 않으면 파티클 애니메이션 중지
-    if (!isPlaying) {
-      // 음악이 멈추면 시작 상태 리셋 (다음 재생 시 다시 위에서 시작)
-      if (hasStartedRef.current) {
-        hasStartedRef.current = false;
-        // 파티클을 다시 위로 리셋
-        const posAttr = pointsRef.current.geometry.attributes.position;
-        const positions = posAttr.array as Float32Array;
-        for (let i = 0; i < particleCount; i++) {
-          positions[i * 3 + 1] = 10 + Math.random() * 15;
-          particleData.settled[i] = 0;
-        }
-        posAttr.needsUpdate = true;
-        settledCountRef.current = 0;
+    // 음악이 멈추면 쌓인 눈 리셋 (다음 재생 시 처음부터)
+    if (!isPlaying && hasStartedRef.current) {
+      hasStartedRef.current = false;
+      settledCountRef.current = 0;
+      for (let i = 0; i < particleCount; i++) {
+        particleData.settled[i] = 0;
       }
-      return;
     }
 
-    // 음악 시작됨
-    hasStartedRef.current = true;
+    // 음악이 시작되면 플래그 설정
+    if (isPlaying && !hasStartedRef.current) {
+      hasStartedRef.current = true;
+    }
 
     // 렌더링할 파티클 수 설정
     pointsRef.current.geometry.setDrawRange(0, particleCount);
@@ -351,6 +344,11 @@ export function ParticleSystem() {
       // 경계 처리
       if (direction < 0) {
         // 겨울: 아래로 떨어짐
+        // Z가 카메라에 너무 가까우면 부드럽게 뒤로 밀어냄
+        if (positions[i3 + 2] > -2) {
+          positions[i3 + 2] += ((-3 - positions[i3 + 2]) * 0.02);
+        }
+
         // 파티클의 z에 따른 화면상 바닥 위치 계산 (원근법 적용)
         const distToCamera = CAMERA_Z - positions[i3 + 2];
         const screenHalfHeight = Math.tan(FOV_RAD / 2) * distToCamera;
@@ -358,20 +356,21 @@ export function ParticleSystem() {
         // 파티클 y를 화면 UV로 변환 (0 = 하단, 1 = 상단)
         const uvY = (positions[i3 + 1] + screenHalfHeight) / (2 * screenHalfHeight);
 
-        // 땅 경계(UV 0.15) 아래면 정착
+        // 땅 경계(UV 0.15) 아래면 처리
         if (uvY < GROUND_UV) {
-          // 화면 안쪽에 있으면 정착
-          if (Math.abs(positions[i3]) < 8 && Math.abs(positions[i3 + 2]) < 4) {
+          // 음악이 시작된 후에만 정착 (화면 안쪽에 있을 때)
+          if (hasStartedRef.current && Math.abs(positions[i3]) < 8 && Math.abs(positions[i3 + 2]) < 4) {
             settled[i] = 1;
             // 정확히 땅 경계 위치로 이동
             const groundY = GROUND_UV * (2 * screenHalfHeight) - screenHalfHeight;
             positions[i3 + 1] = groundY + Math.random() * 0.1;
             settledCountRef.current++;
           } else {
-            // 화면 밖이면 리스폰
+            // 음악 시작 전이거나 화면 밖이면 리스폰 (계속 내림)
             positions[i3 + 1] = 10 + Math.random() * 5;
             positions[i3] = (Math.random() - 0.5) * 20;
-            positions[i3 + 2] = (Math.random() - 0.5) * 10;
+            // Z축을 카메라에서 멀게 (-6 ~ -1 범위로 제한)
+            positions[i3 + 2] = -6 + Math.random() * 5;
           }
         }
       } else {
