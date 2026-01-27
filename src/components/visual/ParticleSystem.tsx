@@ -77,6 +77,7 @@ export function ParticleSystem() {
         uSizeMultiplier: { value: 1.5 },
         uRhythmStrength: { value: 1.5 },
         uSwayAmount: { value: 1.0 },
+        uSpringScaleGrow: { value: 0 },  // 봄 모드: 위로 갈수록 커지는 정도
         uColorSnow: { value: new THREE.Color(1.0, 1.0, 1.0) },
         uColorSakura: { value: new THREE.Color(1.0, 0.4, 0.6) },
       },
@@ -95,6 +96,7 @@ export function ParticleSystem() {
         uniform float uSizeMultiplier;
         uniform float uRhythmStrength;
         uniform float uSwayAmount;
+        uniform float uSpringScaleGrow;
 
         varying float vAlpha;
         varying float vTransition;
@@ -133,7 +135,11 @@ export function ParticleSystem() {
           float beatResponse = smoothstep(0.3, 0.7, fract(aOffset * 3.14159));
           float beatSize = 1.0 + uBeatPump * uBeatPumpSize * beatResponse * moveFactor;
 
-          gl_PointSize = aSize * uSizeMultiplier * energySize * beatSize * (1.0 + springBonus) * (350.0 / -mvPosition.z);
+          // 봄 모드: 위로 갈수록 커지는 효과 (Y 범위: -8 ~ 10)
+          float heightFactor = smoothstep(-8.0, 10.0, position.y); // 0 ~ 1
+          float springGrowSize = 1.0 + heightFactor * uSpringScaleGrow * uTransition;
+
+          gl_PointSize = aSize * uSizeMultiplier * energySize * beatSize * springGrowSize * (1.0 + springBonus) * (350.0 / -mvPosition.z);
 
           gl_Position = projectionMatrix * mvPosition;
 
@@ -270,7 +276,7 @@ export function ParticleSystem() {
   useFrame((state) => {
     if (!pointsRef.current) return;
 
-    const { size, speed, rhythmStrength, swayAmount, beatPumpSize, beatPumpSpeed, particleCount } = particleSettings;
+    const { size, speed, rhythmStrength, swayAmount, beatPumpSize, beatPumpSpeed, particleCount, springScaleGrow } = particleSettings;
 
     // 음악이 재생되지 않으면 파티클 애니메이션 중지
     if (!isPlaying) {
@@ -421,6 +427,7 @@ export function ParticleSystem() {
     shaderMaterial.uniforms.uSizeMultiplier.value = size;
     shaderMaterial.uniforms.uRhythmStrength.value = rhythmStrength;
     shaderMaterial.uniforms.uSwayAmount.value = swayAmount;
+    shaderMaterial.uniforms.uSpringScaleGrow.value = springScaleGrow;
   });
 
   return <points ref={pointsRef} geometry={geometry} material={shaderMaterial} />;

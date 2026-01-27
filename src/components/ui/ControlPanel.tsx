@@ -9,6 +9,7 @@ export interface ParticleSettings {
   beatPumpSize: number;  // 비트 펌프 크기 (0 ~ 2)
   beatPumpSpeed: number; // 비트 펌프 복귀 속도 (0.01 ~ 0.3)
   particleCount: number; // 파티클 수 (1000 ~ 10000)
+  springScaleGrow: number; // 봄 모드: 위로 갈수록 커지는 정도 (0 ~ 3)
 }
 
 // 겨울 모드 (눈)
@@ -19,7 +20,8 @@ const WINTER_SETTINGS: ParticleSettings = {
   swayAmount: 0.1,
   beatPumpSize: 0.7,
   beatPumpSpeed: 0.01,
-  particleCount: 4500,
+  particleCount: 6000,
+  springScaleGrow: 0,
 };
 
 // 봄 모드 (벚꽃)
@@ -31,6 +33,7 @@ const SPRING_SETTINGS: ParticleSettings = {
   beatPumpSize: 0.6,
   beatPumpSpeed: 0.06,
   particleCount: 9000,
+  springScaleGrow: 1.5,
 };
 
 // 전역으로 설정 공유
@@ -48,6 +51,7 @@ const lerpSettings = (current: ParticleSettings, target: ParticleSettings, t: nu
   beatPumpSize: lerp(current.beatPumpSize, target.beatPumpSize, t),
   beatPumpSpeed: lerp(current.beatPumpSpeed, target.beatPumpSpeed, t),
   particleCount: Math.round(lerp(current.particleCount, target.particleCount, t)),
+  springScaleGrow: lerp(current.springScaleGrow, target.springScaleGrow, t),
 });
 
 export function ControlPanel() {
@@ -247,6 +251,27 @@ export function ControlPanel() {
             />
           </div>
 
+          {/* 구분선 */}
+          <div className="border-t border-white/10 my-4"></div>
+          <h4 className="text-white/60 text-xs mb-3">봄 모드</h4>
+
+          {/* 상승 시 크기 증가 */}
+          <div className="mb-4">
+            <div className="flex justify-between text-white/70 text-xs mb-1">
+              <span>상승 크기 증가</span>
+              <span>{settings.springScaleGrow.toFixed(1)}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="3"
+              step="0.1"
+              value={settings.springScaleGrow}
+              onChange={(e) => updateSetting('springScaleGrow', parseFloat(e.target.value))}
+              className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-pink-400"
+            />
+          </div>
+
           {/* 현재 설정값 복사 버튼 */}
           <button
             onClick={() => {
@@ -259,6 +284,7 @@ const settings = {
   swayAmount: ${settings.swayAmount},
   beatPumpSize: ${settings.beatPumpSize},
   beatPumpSpeed: ${settings.beatPumpSpeed},
+  springScaleGrow: ${settings.springScaleGrow},
 };`;
               navigator.clipboard.writeText(code);
               alert('설정값이 클립보드에 복사되었습니다!');
