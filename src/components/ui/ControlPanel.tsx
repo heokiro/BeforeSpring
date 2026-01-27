@@ -28,8 +28,8 @@ const WINTER_SETTINGS: ParticleSettings = {
 const SPRING_SETTINGS: ParticleSettings = {
   size: 1.4,
   speed: 0.3,
-  rhythmStrength: 0.1,
-  swayAmount: 0.1,
+  rhythmStrength: 0,
+  swayAmount: 0.8,
   beatPumpSize: 0.5,
   beatPumpSpeed: 0,
   particleCount: 5500,
