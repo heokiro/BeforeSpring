@@ -27,11 +27,11 @@ const WINTER_SETTINGS: ParticleSettings = {
 // 봄 모드 (벚꽃)
 const SPRING_SETTINGS: ParticleSettings = {
   size: 1.4,
-  speed: 0.2,
+  speed: 0.3,
   rhythmStrength: 0.1,
   swayAmount: 0.1,
   beatPumpSize: 0.5,
-  beatPumpSpeed: 0.01,
+  beatPumpSpeed: 0,
   particleCount: 5500,
   springScaleGrow: 1.8,
 };

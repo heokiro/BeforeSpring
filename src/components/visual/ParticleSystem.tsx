@@ -298,7 +298,10 @@ export function ParticleSystem() {
     if (isBeat) {
       beatPumpRef.current = 1.0;
     } else {
-      beatPumpRef.current = THREE.MathUtils.lerp(beatPumpRef.current, 0, beatPumpSpeed);
+      // 봄 모드에서는 펌프 값이 줄어들지 않음 (커진 상태 유지)
+      if (transitionRef.current < 0.5) {
+        beatPumpRef.current = THREE.MathUtils.lerp(beatPumpRef.current, 0, beatPumpSpeed);
+      }
     }
 
     const posAttr = pointsRef.current.geometry.attributes.position;
