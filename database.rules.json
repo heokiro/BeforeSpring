@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "season": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}

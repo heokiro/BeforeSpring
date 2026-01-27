@@ -6,9 +6,13 @@ import { ExhibitionText } from './components/ui/ExhibitionText';
 import { AudioPlayer } from './components/audio/AudioPlayer';
 import { SpringButton } from './components/ui/SpringButton';
 import { ControlPanel } from './components/ui/ControlPanel';
+import { useSeasonSync } from './hooks/useSeasonSync';
 import './index.css';
 
 function App() {
+  // Firebase DB와 계절 상태 실시간 동기화
+  useSeasonSync();
+
   return (
     <ExhibitionContainer>
       {/* 3D 캔버스 - 파티클 비주얼 */}
