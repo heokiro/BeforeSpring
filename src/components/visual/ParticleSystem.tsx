@@ -429,6 +429,13 @@ export function ParticleSystem() {
     shaderMaterial.uniforms.uRhythmStrength.value = rhythmStrength;
     shaderMaterial.uniforms.uSwayAmount.value = swayAmount;
     shaderMaterial.uniforms.uSpringScaleGrow.value = springScaleGrow;
+
+    // 봄 모드에서는 Normal Blending 사용 (겹침 시 하얗게 되는 현상 방지)
+    if (transitionRef.current > 0.5) {
+      shaderMaterial.blending = THREE.NormalBlending;
+    } else {
+      shaderMaterial.blending = THREE.AdditiveBlending;
+    }
   });
 
   return <points ref={pointsRef} geometry={geometry} material={shaderMaterial} />;

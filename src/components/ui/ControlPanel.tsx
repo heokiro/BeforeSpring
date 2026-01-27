@@ -14,26 +14,26 @@ export interface ParticleSettings {
 
 // 겨울 모드 (눈)
 const WINTER_SETTINGS: ParticleSettings = {
-  size: 1.9,
+  size: 2.5,
   speed: 0.2,
   rhythmStrength: 0.1,
   swayAmount: 0.1,
   beatPumpSize: 1.4,
   beatPumpSpeed: 0.01,
-  particleCount: 6000,
+  particleCount: 5000,
   springScaleGrow: 0,
 };
 
 // 봄 모드 (벚꽃)
 const SPRING_SETTINGS: ParticleSettings = {
-  size: 1.2,
+  size: 1.4,
   speed: 0.2,
-  rhythmStrength: 0.3,
-  swayAmount: 0.5,
-  beatPumpSize: 0.4,
+  rhythmStrength: 0.1,
+  swayAmount: 0.1,
+  beatPumpSize: 0.5,
   beatPumpSpeed: 0.01,
-  particleCount: 9000,
-  springScaleGrow: 2,
+  particleCount: 5500,
+  springScaleGrow: 1.8,
 };
 
 // 전역으로 설정 공유
