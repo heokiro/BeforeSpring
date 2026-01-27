@@ -25,6 +25,7 @@ export function ParticleSystem() {
   const { bass, energy, isBeat, isSpringMode, isPlaying } = useAudioStore();
   const transitionRef = useRef(0);
   const beatPumpRef = useRef(0); // 비트 펌프 값
+  const windBoostRef = useRef(0); // 봄 모드 산들바람 효과
   const settledCountRef = useRef(0);
   const hasStartedRef = useRef(false); // 음악 시작 여부 추적
 
@@ -297,11 +298,21 @@ export function ParticleSystem() {
     // 비트 펌프 효과 (비트 감지 시 1로 점프, 그 후 부드럽게 감소)
     if (isBeat) {
       beatPumpRef.current = 1.0;
+      // 봄 모드: 산들바람 효과 (개별 흔들림 가속)
+      // 봄에서는 더 강한 비트에서만 반응 (bass > 0.5)
+      if (transitionRef.current > 0.5 && bass > 0.6) {
+        windBoostRef.current = 1.0;
+      }
     } else {
-      // 봄 모드에서는 펌프 값이 줄어들지 않음 (커진 상태 유지)
+      // 겨울 모드에서만 펌프 값 감소
       if (transitionRef.current < 0.5) {
         beatPumpRef.current = THREE.MathUtils.lerp(beatPumpRef.current, 0, beatPumpSpeed);
       }
+    }
+
+    // 봄 모드: 산들바람 효과 감쇠
+    if (transitionRef.current > 0.5) {
+      windBoostRef.current = THREE.MathUtils.lerp(windBoostRef.current, 0, 0.01);
     }
 
     const posAttr = pointsRef.current.geometry.attributes.position;
@@ -335,14 +346,17 @@ export function ParticleSystem() {
       // 속도 (비트 펌프 시 약간 느려짐 - 확대되는 순간 정지 느낌)
       const beatSlowdown = 1.0 - beatPumpRef.current * 0.3;
       const rhythmBoost = 1 + bass * rhythmStrength * 0.5;
-      const baseSpeed = velocities[i3 + 1] * speed * rhythmBoost * beatSlowdown;
+      // 봄 모드: 산들바람으로 가속 (1.0 ~ 1.8배 속도)
+      const windMultiplier = isWinter ? 1.0 : (1.0 + windBoostRef.current * 0.8);
+      const baseSpeed = velocities[i3 + 1] * speed * rhythmBoost * beatSlowdown * windMultiplier;
 
       positions[i3 + 1] += baseSpeed * direction;
 
-      // 좌우 흔들림
-      const swaySpeed = velocities[i3] * swayAmount;
+      // 좌우 흔들림 (봄 모드: 개별 흔들림 가속)
+      const swayMultiplier = isWinter ? 1.0 : (1.0 + windBoostRef.current * 1.5);
+      const swaySpeed = velocities[i3] * swayAmount * swayMultiplier;
       positions[i3] += swaySpeed + (isBeat ? (Math.random() - 0.5) * 0.05 * rhythmStrength : 0);
-      positions[i3 + 2] += velocities[i3 + 2] * swayAmount;
+      positions[i3 + 2] += velocities[i3 + 2] * swayAmount * swayMultiplier;
 
       // 경계 처리
       if (direction < 0) {
