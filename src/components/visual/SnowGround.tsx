@@ -109,8 +109,7 @@ export function SnowGround() {
   useFrame((state) => {
     if (!meshRef.current) return;
 
-    // 봄 모드면 눈 녹이기, 겨울이고 재생중이면 쌓기
-    const targetHeight = isSpringMode ? 0 : (isPlaying ? 1.0 : snowHeightRef.current);
+    // 봄 모드면 눈 녹이기
     const targetOpacity = isSpringMode ? 0 : 1;
 
     // 눈 쌓이는 속도 (재생 중일 때만)

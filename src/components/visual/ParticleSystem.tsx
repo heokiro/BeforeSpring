@@ -11,14 +11,23 @@ const CAMERA_Z = 8;
 const FOV_RAD = 60 * Math.PI / 180;
 const GROUND_UV = 0.01; // 배경 땅 경계 (BackgroundColor.tsx의 groundLine과 일치)
 
+// 파티클별 회전값 (벚꽃잎 회전용)
+const rotations = new Float32Array(MAX_PARTICLE_COUNT);
+const rotationSpeeds = new Float32Array(MAX_PARTICLE_COUNT);
+for (let i = 0; i < MAX_PARTICLE_COUNT; i++) {
+  rotations[i] = Math.random() * Math.PI * 2;
+  rotationSpeeds[i] = (Math.random() - 0.5) * 0.05;
+}
+
 export function ParticleSystem() {
   const pointsRef = useRef<THREE.Points>(null);
-  const { bass, energy, isBeat, isSpringMode } = useAudioStore();
+  const { bass, energy, isBeat, isSpringMode, isPlaying } = useAudioStore();
   const transitionRef = useRef(0);
   const beatPumpRef = useRef(0); // 비트 펌프 값
   const settledCountRef = useRef(0);
+  const hasStartedRef = useRef(false); // 음악 시작 여부 추적
 
-  // 파티클 데이터
+  // 파티클 데이터 - 초기 위치를 화면 위쪽에 배치
   const particleData = useMemo(() => {
     const positions = new Float32Array(MAX_PARTICLE_COUNT * 3);
     const velocities = new Float32Array(MAX_PARTICLE_COUNT * 3);
@@ -28,7 +37,8 @@ export function ParticleSystem() {
 
     for (let i = 0; i < MAX_PARTICLE_COUNT; i++) {
       positions[i * 3] = (Math.random() - 0.5) * 20;
-      positions[i * 3 + 1] = Math.random() * 20 - 10;
+      // 초기 위치: 화면 위쪽 (음악 시작 전까지 보이지 않음)
+      positions[i * 3 + 1] = 10 + Math.random() * 15;
       positions[i * 3 + 2] = (Math.random() - 0.5) * 10;
 
       velocities[i * 3] = (Math.random() - 0.5) * 0.01;
@@ -50,6 +60,7 @@ export function ParticleSystem() {
     geo.setAttribute('aSize', new THREE.BufferAttribute(particleData.sizes, 1));
     geo.setAttribute('aOffset', new THREE.BufferAttribute(particleData.offsets, 1));
     geo.setAttribute('aSettled', new THREE.BufferAttribute(particleData.settled, 1));
+    geo.setAttribute('aRotation', new THREE.BufferAttribute(rotations, 1));
     return geo;
   }, [particleData]);
 
@@ -73,6 +84,7 @@ export function ParticleSystem() {
         attribute float aSize;
         attribute float aOffset;
         attribute float aSettled;
+        attribute float aRotation;
 
         uniform float uTime;
         uniform float uEnergy;
@@ -87,6 +99,8 @@ export function ParticleSystem() {
         varying float vAlpha;
         varying float vTransition;
         varying float vBeatPump;
+        varying float vRotation;
+        varying float vOffset;
 
         void main() {
           vec3 pos = position;
@@ -113,7 +127,7 @@ export function ParticleSystem() {
 
           // 크기 계산 (비트 펌프 효과 추가)
           float energySize = 1.0 + uEnergy * 0.4 * moveFactor;
-          float springBonus = uTransition * 0.2;
+          float springBonus = uTransition * 0.3; // 벚꽃잎이 좀 더 크게
 
           // 파티클별로 다른 비트 펌프 강도 (약 40%만 강하게 반응)
           float beatResponse = smoothstep(0.3, 0.7, fract(aOffset * 3.14159));
@@ -126,6 +140,9 @@ export function ParticleSystem() {
           vAlpha = smoothstep(-8.0, 6.0, position.y) * 0.9;
           vTransition = uTransition;
           vBeatPump = uBeatPump * beatResponse * moveFactor;
+          // 회전 애니메이션 (떨어지면서 회전)
+          vRotation = aRotation + uTime * (0.5 + aOffset * 0.5) * moveFactor;
+          vOffset = aOffset;
         }
       `,
       fragmentShader: `
@@ -135,84 +152,113 @@ export function ParticleSystem() {
         varying float vAlpha;
         varying float vTransition;
         varying float vBeatPump;
+        varying float vRotation;
+        varying float vOffset;
 
-        // 눈꽃 모양 (6각형 별)
-        float snowflakeShape(vec2 uv) {
-          float dist = length(uv);
-
-          // 기본 원형
-          float circle = 1.0 - smoothstep(0.1, 0.4, dist);
-
-          // 6각 별 모양
-          float angle = atan(uv.y, uv.x);
-          float rays = abs(cos(angle * 3.0)); // 6개의 광선
-          float star = rays * (1.0 - dist * 2.0);
-          star = max(0.0, star);
-
-          // 작은 가지들
-          float branches = abs(cos(angle * 6.0)) * 0.5;
-          branches *= smoothstep(0.4, 0.15, dist);
-
-          // 중심 글로우
-          float centerGlow = 1.0 - smoothstep(0.0, 0.15, dist);
-
-          return circle * 0.6 + star * 0.8 + branches * 0.3 + centerGlow * 0.5;
+        // 2D 회전 함수
+        vec2 rotate2D(vec2 uv, float angle) {
+          float c = cos(angle);
+          float s = sin(angle);
+          return vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);
         }
 
-        // 벚꽃잎 모양 (5개 꽃잎)
-        float sakuraShape(vec2 uv) {
+        // 눈송이 모양 - 부드럽고 자연스러운 형태
+        float snowflakeShape(vec2 uv, float variation) {
           float dist = length(uv);
+
+          // 기본: 부드러운 원형 글로우 (실제 눈송이의 기본)
+          float softCircle = exp(-dist * dist * 12.0);
+
+          // 약간의 결정 구조 (일부 파티클에만)
           float angle = atan(uv.y, uv.x);
+          float crystal = 0.0;
 
-          // 5개 꽃잎
-          float petals = cos(angle * 2.5) * 0.5 + 0.5;
-          petals = pow(petals, 1.5);
+          if (variation > 0.6) {
+            // 6각형 결정 구조 (약하게)
+            float hex = abs(cos(angle * 3.0));
+            crystal = hex * exp(-dist * 8.0) * 0.3;
+          }
 
-          // 꽃잎 모양 윤곽
-          float petalRadius = 0.25 + petals * 0.2;
-          float petalShape = 1.0 - smoothstep(petalRadius - 0.1, petalRadius + 0.05, dist);
+          // 중심부 밝은 코어
+          float core = exp(-dist * dist * 40.0);
 
-          // 꽃잎 끝 갈라짐 (하트 모양)
-          float notch = smoothstep(0.2, 0.35, dist) * (1.0 - abs(cos(angle * 2.5)));
-          petalShape -= notch * 0.3;
+          // 가장자리 부드러운 페이드
+          float fade = 1.0 - smoothstep(0.3, 0.5, dist);
 
-          // 중심부 (노란색 부분을 위한 마스크)
-          float center = 1.0 - smoothstep(0.0, 0.1, dist);
+          return (softCircle * 0.7 + core * 0.5 + crystal) * fade;
+        }
 
-          return max(0.0, petalShape) + center * 0.3;
+        // 벚꽃 꽃잎 모양 - 단일 꽃잎이 회전하며 떨어지는 형태
+        float sakuraPetalShape(vec2 uv, float rotation) {
+          // 회전 적용
+          vec2 rotatedUV = rotate2D(uv, rotation);
+
+          // 꽃잎 형태: 타원형 + 한쪽 끝이 뾰족한 형태
+          float x = rotatedUV.x;
+          float y = rotatedUV.y;
+
+          // 타원 기반 (세로로 긴 형태)
+          float ellipse = (x * x) / 0.06 + (y * y) / 0.15;
+
+          // 위쪽 끝을 뾰족하게 (꽃잎 끝)
+          float taper = 1.0 + y * 1.5;
+          ellipse *= taper;
+
+          // 아래쪽 끝 갈라짐 (꽃잎 특유의 하트 모양 끝)
+          float notch = 0.0;
+          if (y < -0.1) {
+            notch = exp(-x * x * 200.0) * smoothstep(-0.1, -0.25, y) * 0.5;
+          }
+
+          // 기본 꽃잎 모양
+          float petal = 1.0 - smoothstep(0.8, 1.2, ellipse);
+          petal = max(0.0, petal - notch);
+
+          // 부드러운 가장자리
+          petal *= smoothstep(1.3, 0.7, ellipse);
+
+          // 중심 맥 (잎맥 표현)
+          float vein = exp(-x * x * 150.0) * smoothstep(0.35, 0.0, abs(y)) * 0.2;
+
+          return petal + vein;
         }
 
         void main() {
           vec2 center = gl_PointCoord - vec2(0.5);
 
-          // 눈꽃과 벚꽃 모양 계산
-          float snowShape = snowflakeShape(center);
-          float sakuraShapeVal = sakuraShape(center);
+          // 눈송이와 벚꽃잎 모양 계산
+          float snowShape = snowflakeShape(center, vOffset);
+          float sakuraShapeVal = sakuraPetalShape(center, vRotation);
 
           // 전환에 따라 모양 블렌딩
           float shape = mix(snowShape, sakuraShapeVal, vTransition);
           float alpha = shape * vAlpha;
 
-          // 눈 → 벚꽃 색상 전환
-          vec3 color = mix(uColorSnow, uColorSakura, vTransition);
+          // 눈 색상: 순백색 + 약간의 푸른 빛
+          vec3 snowColor = vec3(0.98, 0.99, 1.0);
 
-          // 중심부 글로우
+          // 벚꽃 색상: 연한 분홍색 (가장자리가 더 진함)
           float dist = length(center);
-          float glow = 1.0 - dist * 1.5;
-          glow = max(0.0, glow);
-          vec3 glowColor = mix(vec3(1.0), vec3(1.0, 0.6, 0.7), vTransition);
-          color += glow * 0.4 * glowColor;
+          vec3 sakuraCore = vec3(1.0, 0.92, 0.94);  // 연한 분홍
+          vec3 sakuraEdge = vec3(1.0, 0.7, 0.8);   // 진한 분홍
+          vec3 sakuraColor = mix(sakuraCore, sakuraEdge, smoothstep(0.1, 0.4, dist));
+
+          // 색상 전환
+          vec3 color = mix(snowColor, sakuraColor, vTransition);
+
+          // 눈: 중심부 밝은 글로우
+          if (vTransition < 0.5) {
+            float snowGlow = exp(-dist * dist * 20.0);
+            color += snowGlow * 0.3 * (1.0 - vTransition * 2.0);
+          }
 
           // 비트 펌프 시 밝기 증가
-          color += vBeatPump * 0.3;
-
-          // 봄 모드에서 색상 채도 증가
-          color = mix(color, color * vec3(1.0, 0.85, 0.9), vTransition * 0.3);
+          color += vBeatPump * 0.2;
 
           // 알파가 너무 낮으면 버림
-          if (alpha < 0.01) discard;
+          if (alpha < 0.02) discard;
 
-          gl_FragColor = vec4(color, alpha);
+          gl_FragColor = vec4(color, alpha * 0.95);
         }
       `,
       transparent: true,
@@ -225,6 +271,27 @@ export function ParticleSystem() {
     if (!pointsRef.current) return;
 
     const { size, speed, rhythmStrength, swayAmount, beatPumpSize, beatPumpSpeed, particleCount } = particleSettings;
+
+    // 음악이 재생되지 않으면 파티클 애니메이션 중지
+    if (!isPlaying) {
+      // 음악이 멈추면 시작 상태 리셋 (다음 재생 시 다시 위에서 시작)
+      if (hasStartedRef.current) {
+        hasStartedRef.current = false;
+        // 파티클을 다시 위로 리셋
+        const posAttr = pointsRef.current.geometry.attributes.position;
+        const positions = posAttr.array as Float32Array;
+        for (let i = 0; i < particleCount; i++) {
+          positions[i * 3 + 1] = 10 + Math.random() * 15;
+          particleData.settled[i] = 0;
+        }
+        posAttr.needsUpdate = true;
+        settledCountRef.current = 0;
+      }
+      return;
+    }
+
+    // 음악 시작됨
+    hasStartedRef.current = true;
 
     // 렌더링할 파티클 수 설정
     pointsRef.current.geometry.setDrawRange(0, particleCount);
@@ -322,6 +389,18 @@ export function ParticleSystem() {
     const settledAttr = pointsRef.current.geometry.attributes.aSettled;
     if (settledAttr) {
       settledAttr.needsUpdate = true;
+    }
+
+    // 벚꽃잎 회전 업데이트
+    const rotAttr = pointsRef.current.geometry.attributes.aRotation;
+    if (rotAttr && transitionRef.current > 0.1) {
+      const rotArray = rotAttr.array as Float32Array;
+      for (let i = 0; i < particleCount; i++) {
+        if (particleData.settled[i] === 0) {
+          rotArray[i] += rotationSpeeds[i];
+        }
+      }
+      rotAttr.needsUpdate = true;
     }
 
     // 유니폼 업데이트

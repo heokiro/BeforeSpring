@@ -19,7 +19,7 @@ const WINTER_SETTINGS: ParticleSettings = {
   swayAmount: 0.1,
   beatPumpSize: 0.7,
   beatPumpSpeed: 0.01,
-  particleCount: 2500,
+  particleCount: 4500,
 };
 
 // 봄 모드 (벚꽃)
