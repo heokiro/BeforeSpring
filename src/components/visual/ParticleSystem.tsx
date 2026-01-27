@@ -1,8 +1,9 @@
 import { useRef, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useLoader } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useAudioStore } from '../../stores/audioStore';
 import { particleSettings } from '../ui/ControlPanel';
+import sakuraTexture from '../../assets/sprite/벚꽃.png';
 
 const MAX_PARTICLE_COUNT = 10000;
 
@@ -26,6 +27,13 @@ export function ParticleSystem() {
   const beatPumpRef = useRef(0); // 비트 펌프 값
   const settledCountRef = useRef(0);
   const hasStartedRef = useRef(false); // 음악 시작 여부 추적
+
+  // 벚꽃 텍스처 로드
+  const sakuraTex = useLoader(THREE.TextureLoader, sakuraTexture);
+
+  // 텍스처 설정 (클램프로 경계 처리)
+  sakuraTex.wrapS = THREE.ClampToEdgeWrapping;
+  sakuraTex.wrapT = THREE.ClampToEdgeWrapping;
 
   // 파티클 데이터 - 초기 위치를 화면 위쪽에 배치
   const particleData = useMemo(() => {
@@ -80,6 +88,7 @@ export function ParticleSystem() {
         uSpringScaleGrow: { value: 0 },  // 봄 모드: 위로 갈수록 커지는 정도
         uColorSnow: { value: new THREE.Color(1.0, 1.0, 1.0) },
         uColorSakura: { value: new THREE.Color(1.0, 0.4, 0.6) },
+        uSakuraTexture: { value: sakuraTex },  // 벚꽃 텍스처
       },
       vertexShader: `
         attribute float aSize;
@@ -154,6 +163,7 @@ export function ParticleSystem() {
       fragmentShader: `
         uniform vec3 uColorSnow;
         uniform vec3 uColorSakura;
+        uniform sampler2D uSakuraTexture;
 
         varying float vAlpha;
         varying float vTransition;
@@ -194,72 +204,57 @@ export function ParticleSystem() {
           return (softCircle * 0.7 + core * 0.5 + crystal) * fade;
         }
 
-        // 벚꽃 꽃잎 모양 - 단일 꽃잎이 회전하며 떨어지는 형태
-        float sakuraPetalShape(vec2 uv, float rotation) {
-          // 회전 적용
-          vec2 rotatedUV = rotate2D(uv, rotation);
-
-          // 꽃잎 형태: 타원형 + 한쪽 끝이 뾰족한 형태
-          float x = rotatedUV.x;
-          float y = rotatedUV.y;
-
-          // 타원 기반 (세로로 긴 형태)
-          float ellipse = (x * x) / 0.06 + (y * y) / 0.15;
-
-          // 위쪽 끝을 뾰족하게 (꽃잎 끝)
-          float taper = 1.0 + y * 1.5;
-          ellipse *= taper;
-
-          // 아래쪽 끝 갈라짐 (꽃잎 특유의 하트 모양 끝)
-          float notch = 0.0;
-          if (y < -0.1) {
-            notch = exp(-x * x * 200.0) * smoothstep(-0.1, -0.25, y) * 0.5;
-          }
-
-          // 기본 꽃잎 모양
-          float petal = 1.0 - smoothstep(0.8, 1.2, ellipse);
-          petal = max(0.0, petal - notch);
-
-          // 부드러운 가장자리
-          petal *= smoothstep(1.3, 0.7, ellipse);
-
-          // 중심 맥 (잎맥 표현)
-          float vein = exp(-x * x * 150.0) * smoothstep(0.35, 0.0, abs(y)) * 0.2;
-
-          return petal + vein;
-        }
-
         void main() {
           vec2 center = gl_PointCoord - vec2(0.5);
 
-          // 눈송이와 벚꽃잎 모양 계산
+          // 눈송이 모양 계산
           float snowShape = snowflakeShape(center, vOffset);
-          float sakuraShapeVal = sakuraPetalShape(center, vRotation);
 
-          // 전환에 따라 모양 블렌딩
-          float shape = mix(snowShape, sakuraShapeVal, vTransition);
-          float alpha = shape * vAlpha;
+          // 벚꽃 텍스처 샘플링 (회전 적용)
+          vec2 rotatedUV = rotate2D(center, vRotation);
+          vec2 texCoord = rotatedUV + vec2(0.5); // 0~1 범위로 변환
+
+          // UV가 0~1 범위 밖이면 투명 처리
+          float inBounds = step(0.0, texCoord.x) * step(texCoord.x, 1.0) *
+                          step(0.0, texCoord.y) * step(texCoord.y, 1.0);
+          vec4 sakuraTexColor = texture2D(uSakuraTexture, texCoord) * inBounds;
 
           // 눈 색상: 순백색 + 약간의 푸른 빛
           vec3 snowColor = vec3(0.98, 0.99, 1.0);
+          float snowAlpha = snowShape * vAlpha;
 
-          // 벚꽃 색상: 연한 분홍색 (가장자리가 더 진함)
-          float dist = length(center);
-          vec3 sakuraCore = vec3(1.0, 0.92, 0.94);  // 연한 분홍
-          vec3 sakuraEdge = vec3(1.0, 0.7, 0.8);   // 진한 분홍
-          vec3 sakuraColor = mix(sakuraCore, sakuraEdge, smoothstep(0.1, 0.4, dist));
+          // 벚꽃: 텍스처 색상 그대로 사용
+          vec3 sakuraColor = sakuraTexColor.rgb;
+          float sakuraAlpha = sakuraTexColor.a * vAlpha;
 
-          // 색상 전환
-          vec3 color = mix(snowColor, sakuraColor, vTransition);
+          // 색상 및 알파 전환
+          vec3 color;
+          float alpha;
 
-          // 눈: 중심부 밝은 글로우
-          if (vTransition < 0.5) {
+          if (vTransition > 0.99) {
+            // 완전 봄 모드: 텍스처만 표시
+            color = sakuraColor;
+            alpha = sakuraAlpha;
+          } else if (vTransition < 0.01) {
+            // 완전 겨울 모드: 눈만 표시
+            color = snowColor;
+            alpha = snowAlpha;
+            // 눈 글로우 효과
+            float dist = length(center);
             float snowGlow = exp(-dist * dist * 20.0);
-            color += snowGlow * 0.3 * (1.0 - vTransition * 2.0);
+            color += snowGlow * 0.3;
+          } else {
+            // 전환 중
+            color = mix(snowColor, sakuraColor, vTransition);
+            alpha = mix(snowAlpha, sakuraAlpha, vTransition);
+            // 눈 글로우는 전환 중에만 적용
+            float dist = length(center);
+            float snowGlow = exp(-dist * dist * 20.0);
+            color += snowGlow * 0.3 * (1.0 - vTransition);
           }
 
-          // 비트 펌프 시 밝기 증가
-          color += vBeatPump * 0.2;
+          // 비트 펌프 시 밝기 증가 (눈에만 적용, 벚꽃은 제외)
+          color += vBeatPump * 0.2 * (1.0 - vTransition);
 
           // 알파가 너무 낮으면 버림
           if (alpha < 0.02) discard;
@@ -271,7 +266,7 @@ export function ParticleSystem() {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-  }, []);
+  }, [sakuraTex]);
 
   useFrame((state) => {
     if (!pointsRef.current) return;
@@ -381,10 +376,17 @@ export function ParticleSystem() {
         }
       } else {
         // 봄: 위로 올라감
+        // Z가 카메라에 너무 가까우면 부드럽게 뒤로 밀어냄
+        if (positions[i3 + 2] > -2) {
+          // Z > -2 이면 서서히 뒤로 이동 (lerp)
+          positions[i3 + 2] += ((-3 - positions[i3 + 2]) * 0.02);
+        }
+
         if (positions[i3 + 1] > 10) {
           positions[i3 + 1] = -8 - Math.random() * 5;
           positions[i3] = (Math.random() - 0.5) * 20;
-          positions[i3 + 2] = (Math.random() - 0.5) * 10;
+          // 봄: Z축을 카메라에서 멀게 (-6 ~ -1 범위로 제한)
+          positions[i3 + 2] = -6 + Math.random() * 5;
         }
       }
     }
