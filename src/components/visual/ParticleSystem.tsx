@@ -89,6 +89,7 @@ export function ParticleSystem() {
         uRhythmStrength: { value: 1.5 },
         uSwayAmount: { value: 1.0 },
         uSpringScaleGrow: { value: 0 },  // 봄 모드: 위로 갈수록 커지는 정도
+        uRotationBoost: { value: 0 },  // 봄 모드: 회전 속도 가속
         uColorSnow: { value: new THREE.Color(1.0, 1.0, 1.0) },
         uColorSakura: { value: new THREE.Color(1.0, 0.4, 0.6) },
         uSakuraTexture: { value: sakuraTex },  // 벚꽃 텍스처
@@ -109,6 +110,7 @@ export function ParticleSystem() {
         uniform float uRhythmStrength;
         uniform float uSwayAmount;
         uniform float uSpringScaleGrow;
+        uniform float uRotationBoost;
 
         varying float vAlpha;
         varying float vTransition;
@@ -158,8 +160,10 @@ export function ParticleSystem() {
           vAlpha = smoothstep(-8.0, 6.0, position.y) * 0.9;
           vTransition = uTransition;
           vBeatPump = uBeatPump * beatResponse * moveFactor;
-          // 회전 애니메이션 (떨어지면서 회전)
-          vRotation = aRotation + uTime * (0.5 + aOffset * 0.5) * moveFactor;
+          // 회전 애니메이션 (떨어지면서 회전 + 봄 모드: 에너지에 따라 가속)
+          float rotationSpeed = 0.5 + aOffset * 0.5;
+          float springRotationBoost = uRotationBoost * uTransition * 0.2; // 봄 모드에서만 회전 가속
+          vRotation = aRotation + uTime * (rotationSpeed + springRotationBoost) * moveFactor;
           vOffset = aOffset;
         }
       `,
@@ -460,6 +464,13 @@ export function ParticleSystem() {
     shaderMaterial.uniforms.uRhythmStrength.value = rhythmStrength;
     shaderMaterial.uniforms.uSwayAmount.value = swayAmount;
     shaderMaterial.uniforms.uSpringScaleGrow.value = springScaleGrow;
+
+    // 봄 모드: 회전 속도 가속 (에너지에 따라)
+    shaderMaterial.uniforms.uRotationBoost.value = THREE.MathUtils.lerp(
+      shaderMaterial.uniforms.uRotationBoost.value,
+      energy * 1.5, // 에너지에 비례하여 회전 가속
+      0.06
+    );
 
     // 봄 모드에서는 Normal Blending 사용 (겹침 시 하얗게 되는 현상 방지)
     if (transitionRef.current > 0.5) {
