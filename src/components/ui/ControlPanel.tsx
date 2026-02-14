@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAudioStore } from '../../stores/audioStore';
+import type { AuroraParams } from '../../stores/audioStore';
 
 export interface ParticleSettings {
   size: number;          // 파티클 크기 (0.5 ~ 3)
@@ -55,11 +56,16 @@ const lerpSettings = (current: ParticleSettings, target: ParticleSettings, t: nu
 });
 
 export function ControlPanel() {
-  const { isPlaying, isSpringMode } = useAudioStore();
+  const { isPlaying, isSpringMode, auroraParams, setAuroraParams } = useAudioStore();
   const [isOpen, setIsOpen] = useState(false);
+  const [auroraOpen, setAuroraOpen] = useState(false);
   const [settings, setSettings] = useState<ParticleSettings>(WINTER_SETTINGS);
   const targetSettingsRef = useRef<ParticleSettings>(WINTER_SETTINGS);
   const isTransitioningRef = useRef(false);
+
+  const updateAuroraSetting = (key: keyof AuroraParams, value: number) => {
+    setAuroraParams({ [key]: value });
+  };
 
   // 모드 전환 시 부드러운 설정 변경
   useEffect(() => {
@@ -272,6 +278,165 @@ export function ControlPanel() {
             />
           </div>
 
+          {/* 구분선 */}
+          <div className="border-t border-white/10 my-4"></div>
+
+          {/* 오로라 설정 (접이식) */}
+          <button
+            onClick={() => setAuroraOpen(!auroraOpen)}
+            className="flex items-center justify-between w-full text-white/60 text-xs mb-3 hover:text-white/80 transition-colors"
+          >
+            <span>오로라 설정</span>
+            <svg
+              className={`w-4 h-4 transition-transform ${auroraOpen ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {auroraOpen && (
+            <div className="space-y-3 mb-4">
+              {/* 속도 */}
+              <div>
+                <div className="flex justify-between text-white/70 text-xs mb-1">
+                  <span>속도</span>
+                  <span>{auroraParams.speed.toFixed(3)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.001"
+                  max="0.1"
+                  step="0.001"
+                  value={auroraParams.speed}
+                  onChange={(e) => updateAuroraSetting('speed', parseFloat(e.target.value))}
+                  className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                />
+              </div>
+
+              {/* 발광 강도 */}
+              <div>
+                <div className="flex justify-between text-white/70 text-xs mb-1">
+                  <span>발광 강도</span>
+                  <span>{auroraParams.emissionStrength.toFixed(1)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="15"
+                  step="0.5"
+                  value={auroraParams.emissionStrength}
+                  onChange={(e) => updateAuroraSetting('emissionStrength', parseFloat(e.target.value))}
+                  className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                />
+              </div>
+
+              {/* 오프셋 */}
+              <div>
+                <div className="flex justify-between text-white/70 text-xs mb-1">
+                  <span>오프셋</span>
+                  <span>{auroraParams.offset.toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={auroraParams.offset}
+                  onChange={(e) => updateAuroraSetting('offset', parseFloat(e.target.value))}
+                  className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                />
+              </div>
+
+              {/* 부드러움 */}
+              <div>
+                <div className="flex justify-between text-white/70 text-xs mb-1">
+                  <span>부드러움</span>
+                  <span>{auroraParams.smoothness.toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.05"
+                  max="0.5"
+                  step="0.01"
+                  value={auroraParams.smoothness}
+                  onChange={(e) => updateAuroraSetting('smoothness', parseFloat(e.target.value))}
+                  className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                />
+              </div>
+
+              {/* 왜곡 */}
+              <div>
+                <div className="flex justify-between text-white/70 text-xs mb-1">
+                  <span>왜곡</span>
+                  <span>{auroraParams.distort.toFixed(1)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="3"
+                  step="0.1"
+                  value={auroraParams.distort}
+                  onChange={(e) => updateAuroraSetting('distort', parseFloat(e.target.value))}
+                  className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                />
+              </div>
+
+              {/* 스케일 */}
+              <div>
+                <div className="flex justify-between text-white/70 text-xs mb-1">
+                  <span>스케일</span>
+                  <span>{auroraParams.scale.toFixed(3)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.005"
+                  max="0.1"
+                  step="0.005"
+                  value={auroraParams.scale}
+                  onChange={(e) => updateAuroraSetting('scale', parseFloat(e.target.value))}
+                  className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                />
+              </div>
+
+              {/* 스텝 */}
+              <div>
+                <div className="flex justify-between text-white/70 text-xs mb-1">
+                  <span>스텝 (품질)</span>
+                  <span>{auroraParams.step.toFixed(3)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.005"
+                  max="0.05"
+                  step="0.005"
+                  value={auroraParams.step}
+                  onChange={(e) => updateAuroraSetting('step', parseFloat(e.target.value))}
+                  className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                />
+              </div>
+
+              {/* 밀도 */}
+              <div>
+                <div className="flex justify-between text-white/70 text-xs mb-1">
+                  <span>밀도</span>
+                  <span>{auroraParams.baseDensity.toFixed(1)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="5"
+                  step="0.1"
+                  value={auroraParams.baseDensity}
+                  onChange={(e) => updateAuroraSetting('baseDensity', parseFloat(e.target.value))}
+                  className="w-full h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                />
+              </div>
+            </div>
+          )}
+
           {/* 현재 설정값 복사 버튼 */}
           <button
             onClick={() => {
@@ -285,6 +450,18 @@ const settings = {
   beatPumpSize: ${settings.beatPumpSize},
   beatPumpSpeed: ${settings.beatPumpSpeed},
   springScaleGrow: ${settings.springScaleGrow},
+};
+
+// 오로라 설정값
+const auroraSettings = {
+  speed: ${auroraParams.speed},
+  emissionStrength: ${auroraParams.emissionStrength},
+  offset: ${auroraParams.offset},
+  smoothness: ${auroraParams.smoothness},
+  distort: ${auroraParams.distort},
+  scale: ${auroraParams.scale},
+  step: ${auroraParams.step},
+  baseDensity: ${auroraParams.baseDensity},
 };`;
               navigator.clipboard.writeText(code);
               alert('설정값이 클립보드에 복사되었습니다!');
