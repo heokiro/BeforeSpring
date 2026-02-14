@@ -2,7 +2,7 @@ import { Canvas } from '@react-three/fiber';
 import { ExhibitionContainer } from './components/layout/ExhibitionContainer';
 import { ParticleSystem } from './components/visual/ParticleSystem';
 import { BackgroundColor } from './components/visual/BackgroundColor';
-import { RaymarchingAurora } from './components/visual/RaymarchingAurora';
+import { VolumetricAurora } from './components/visual/VolumetricAurora';
 import { ExhibitionText } from './components/ui/ExhibitionText';
 import { AudioPlayer } from './components/audio/AudioPlayer';
 import { SpringButton } from './components/ui/SpringButton';
@@ -23,7 +23,7 @@ function App() {
         gl={{ antialias: true, alpha: true }}
       >
         <BackgroundColor />
-        <RaymarchingAurora />
+        <VolumetricAurora />
         <ParticleSystem />
       </Canvas>
 

@@ -9,6 +9,7 @@ export interface AuroraParams {
   scale: number;
   step: number;
   baseDensity: number;
+  auroraIntensity: number; // 오로라 강도 (커튼형 오로라용)
 }
 
 export interface AudioState {
@@ -33,9 +34,9 @@ interface AudioStore extends AudioState {
   setAuroraParams: (params: Partial<AuroraParams>) => void;
 }
 
-// Godot 원본 기본값
+// 커튼형 오로라 기본값
 const defaultAuroraParams: AuroraParams = {
-  speed: 0.01,
+  speed: 0.06,           // 커튼형 오로라 속도
   emissionStrength: 5.0,
   offset: 0.0,
   smoothness: 0.15,
@@ -43,6 +44,7 @@ const defaultAuroraParams: AuroraParams = {
   scale: 0.02,
   step: 0.01,
   baseDensity: 2.0,
+  auroraIntensity: 1.8,  // 오로라 강도
 };
 
 export const useAudioStore = create<AudioStore>((set) => ({
