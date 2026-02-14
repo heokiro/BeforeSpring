@@ -465,11 +465,11 @@ export function ParticleSystem() {
     shaderMaterial.uniforms.uSwayAmount.value = swayAmount;
     shaderMaterial.uniforms.uSpringScaleGrow.value = springScaleGrow;
 
-    // 봄 모드: 회전 속도 가속 (에너지에 따라)
+    // 봄 모드: 회전 속도 가속 (에너지에 따라, 은은하게)
     shaderMaterial.uniforms.uRotationBoost.value = THREE.MathUtils.lerp(
       shaderMaterial.uniforms.uRotationBoost.value,
-      energy * 1.5, // 에너지에 비례하여 회전 가속
-      0.06
+      energy * 0.5, // 1.5 → 0.5 (더 은은하게)
+      0.04 // 더 부드러운 전환
     );
 
     // 봄 모드에서는 Normal Blending 사용 (겹침 시 하얗게 되는 현상 방지)
