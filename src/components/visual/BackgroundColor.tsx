@@ -22,6 +22,11 @@ export function BackgroundColor() {
   const transitionRef = useRef(0);
   const beatPulseRef = useRef(0);
 
+  // 오로라 성장 관련
+  const winterTimeRef = useRef(0);
+  const auroraGrowthRef = useRef(0);
+  const AURORA_GROW_DURATION = 60; // 1분에 걸쳐 성장
+
   useEffect(() => {
     scene.background = null;
   }, [scene]);
@@ -35,6 +40,7 @@ export function BackgroundColor() {
         uTransition: { value: 0 },
         uBeatPulse: { value: 0 },
         uEnergy: { value: 0 },
+        uAuroraGrowth: { value: 0 },  // 오로라 성장도 (0~1)
       },
       vertexShader: `
         varying vec2 vUv;
@@ -50,6 +56,7 @@ export function BackgroundColor() {
         uniform float uTransition;
         uniform float uBeatPulse;
         uniform float uEnergy;
+        uniform float uAuroraGrowth;
         varying vec2 vUv;
 
         // Simplex 2D Noise
@@ -113,36 +120,57 @@ export function BackgroundColor() {
           // 노이즈로 미묘한 색상 변화
           vec3 noiseColor = baseColor + combinedNoise * 0.04;
 
-          // 2. 오로라 효과 (상단에 은은한 빛의 띠)
-          float auroraY = smoothstep(0.5, 0.95, vUv.y);
-          float auroraWave = sin(vUv.x * 6.0 + uTime * 0.2) * 0.5 + 0.5;
-          auroraWave *= sin(vUv.x * 2.5 - uTime * 0.15) * 0.3 + 0.7;
-          float auroraIntensity = auroraY * auroraWave * 0.06; // 0.15 → 0.06 (더 은은하게)
+          // 2. 실제 오로라 (다중 색상 + 물결 커튼)
+          float winterAuroraMask = 1.0 - uTransition;  // 겨울에만 표시
 
-          // 오로라 색상 (시간에 따라 변화)
-          float auroraHue = fract(uTime * 0.015 + vUv.x * 0.15);
-          // 겨울: 청록색 계열, 봄: 분홍색 계열
-          float winterHue = 0.5 + auroraHue * 0.1; // 청록~파랑
-          float springHue = 0.9 + auroraHue * 0.08;  // 분홍~빨강
-          float finalHue = mix(winterHue, springHue, uTransition);
-          vec3 auroraColor = hsv2rgb(vec3(finalHue, 0.25, 0.9)); // 채도 낮춤
+          // 오로라 영역 (화면 상단 30~98%)
+          float auroraRegion = smoothstep(0.30, 0.98, vUv.y);
 
-          // 3. 비트 반응 펄스 (화면 전체 은은하게 밝아짐)
-          float beatGlow = uBeatPulse * 0.035; // 0.08 → 0.035
+          // 물결치는 Y좌표
+          float waveOffset = sin(vUv.x * 8.0 + uTime * 0.3) * 0.03;
+          float waveY = vUv.y + waveOffset;
 
-          // 4. 전환 시 부드러운 효과
+          // === Layer 1: 배경 글로우 (넓고 부드러움) ===
+          float glow1 = snoise(vec2(vUv.x * 1.5, uTime * 0.02));
+          float glowBands = sin(vUv.x * 5.0 + glow1 * 2.0 + uTime * 0.08);
+          glowBands = pow(glowBands * 0.5 + 0.5, 3.0);
+          float glowFade = pow(1.0 - smoothstep(0.4, 0.98, waveY), 0.5);
+          float aurora1 = glowBands * auroraRegion * glowFade * 0.4;
+
+          // === Layer 2: 메인 커튼 (선명한 밴드) ===
+          float aNoise2 = snoise(vec2(vUv.x * 3.0, uTime * 0.05));
+          float bands2 = sin(vUv.x * 15.0 + aNoise2 * 2.5 + uTime * 0.15);
+          bands2 = pow(bands2 * 0.5 + 0.5, 1.2);
+          float height2 = snoise(vec2(vUv.x * 4.0 + uTime * 0.02, 0.0)) * 0.3 + 0.7;
+          float fade2 = pow(1.0 - smoothstep(0.35, 0.92, waveY), 0.6);
+          float aurora2 = bands2 * auroraRegion * fade2 * height2 * 0.6;
+
+          // === Layer 3: 디테일 (빠르고 선명) ===
+          float aNoise3 = snoise(vec2(vUv.x * 5.0, uTime * 0.1));
+          float bands3 = sin(vUv.x * 30.0 + aNoise3 * 3.0 + uTime * 0.25);
+          bands3 = pow(bands3 * 0.5 + 0.5, 1.0);
+          float fade3 = pow(1.0 - smoothstep(0.3, 0.85, waveY), 0.7);
+          float aurora3 = bands3 * auroraRegion * fade3 * 0.8;
+
+          // === 색상 (Y축 기반 그라데이션) ===
+          // 아래: 초록(0.33) → 중간: 청록(0.5) → 위: 보라(0.75)
+          float hueBase = mix(0.33, 0.75, pow(vUv.y, 0.8));
+
+          vec3 aColor1 = hsv2rgb(vec3(hueBase + 0.1, 0.6, 0.9));   // 배경: 약간 보라쪽
+          vec3 aColor2 = hsv2rgb(vec3(hueBase, 0.75, 0.95));       // 메인: 기본색
+          vec3 aColor3 = hsv2rgb(vec3(hueBase - 0.05, 0.7, 1.0)); // 디테일: 약간 초록쪽
+
+          // === 레이어 합성 ===
+          vec3 auroraColor = aColor1 * aurora1 + aColor2 * aurora2 + aColor3 * aurora3;
+
+          // 3. 전환 시 부드러운 효과 (봄 전환 시만)
           float transitionPeak = sin(uTransition * 3.14159);
-          vec3 transitionGlow = vec3(1.0, 0.97, 0.98) * transitionPeak * 0.06; // 0.12 → 0.06
+          vec3 transitionGlow = vec3(1.0, 0.97, 0.98) * transitionPeak * 0.04;
 
           // 최종 색상 합성
           vec3 color = noiseColor;
-          color += auroraColor * auroraIntensity;
-          color += beatGlow;
+          color += auroraColor * winterAuroraMask;  // 겨울에만 오로라 (3-레이어)
           color += transitionGlow;
-
-          // 시간에 따른 미묘한 전체 색조 변화
-          float globalHueShift = sin(uTime * 0.1) * 0.02;
-          color += globalHueShift;
 
           gl_FragColor = vec4(color, 1.0);
         }
@@ -152,9 +180,12 @@ export function BackgroundColor() {
     });
   }, []);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const targetTransition = isSpringMode ? 1 : 0;
     transitionRef.current = THREE.MathUtils.lerp(transitionRef.current, targetTransition, 0.015);
+
+    // 오로라는 처음부터 완성된 상태로 표시
+    auroraGrowthRef.current = 1.0;
 
     // 비트 펄스 (비트 감지 시 1로 점프, 서서히 감소)
     if (isBeat) {
@@ -181,6 +212,7 @@ export function BackgroundColor() {
       energy,
       0.1
     );
+    shaderMaterial.uniforms.uAuroraGrowth.value = auroraGrowthRef.current;
   });
 
   return (
