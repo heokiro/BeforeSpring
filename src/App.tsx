@@ -3,15 +3,21 @@ import { ExhibitionContainer } from './components/layout/ExhibitionContainer';
 import { ParticleSystem } from './components/visual/ParticleSystem';
 import { BackgroundColor } from './components/visual/BackgroundColor';
 import { ExhibitionText } from './components/ui/ExhibitionText';
+import { CreditsOverlay } from './components/ui/CreditsOverlay';
+import { StartOverlay } from './components/ui/StartOverlay';
 import { AudioPlayer } from './components/audio/AudioPlayer';
 import { SpringButton } from './components/ui/SpringButton';
 import { ControlPanel } from './components/ui/ControlPanel';
-import { useSeasonSync } from './hooks/useSeasonSync';
+import { useExhibitionSync } from './hooks/useExhibitionSync';
+import { useExhibitionTimers } from './hooks/useExhibitionTimers';
 import './index.css';
 
 function App() {
-  // Firebase DB와 계절 상태 실시간 동기화
-  useSeasonSync();
+  // Firebase DB와 전시 상태 실시간 동기화
+  useExhibitionSync();
+
+  // 전시 타이머 (크레딧 표시, 자동 복귀)
+  useExhibitionTimers();
 
   return (
     <ExhibitionContainer>
@@ -28,13 +34,21 @@ function App() {
       {/* 오버레이 - 전시 안내 텍스트 */}
       <ExhibitionText />
 
+      {/* 크레딧 오버레이 (4단계 5초 후 표시) */}
+      <CreditsOverlay />
+
+      {/* 시작 오버레이 (사용자 상호작용 필요) */}
+      <StartOverlay />
+
       {/* 오디오 플레이어 */}
       <AudioPlayer />
 
-      {/* 봄 전환 버튼 */}
-      <SpringButton />
+      {/* 봄 전환 버튼 - 전시용으로 숨김 */}
+      <div className="hidden">
+        <SpringButton />
+      </div>
 
-      {/* 파티클 설정 패널 */}
+      {/* 파티클 설정 패널 - 왼쪽 위 코너 클릭으로 열기 */}
       <ControlPanel />
     </ExhibitionContainer>
   );

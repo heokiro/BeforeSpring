@@ -47,8 +47,18 @@ export function ExhibitionContainer({ children }: ExhibitionContainerProps) {
   }, []);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-black">
-      {children}
+    <div className="relative w-screen h-screen overflow-hidden bg-black flex items-center justify-center">
+      {/* 9:16 비율 컨테이너 (전시용 세로 TV) */}
+      <div
+        className="relative overflow-hidden bg-black"
+        style={{
+          aspectRatio: '9/16',
+          height: '100vh',
+          maxWidth: 'calc(100vh * 9 / 16)',
+        }}
+      >
+        {children}
+      </div>
 
       {/* 전체화면 버튼 (마우스 오버 시 표시) */}
       <button

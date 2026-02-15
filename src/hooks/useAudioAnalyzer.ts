@@ -19,9 +19,11 @@ export function useAudioAnalyzer() {
   const initialize = useCallback((audioElement: HTMLAudioElement) => {
     // 이미 초기화되었으면 스킵
     if (audioContextRef.current && sourceRef.current) {
+      console.log('AudioAnalyzer: 이미 초기화됨, 스킵');
       return;
     }
 
+    console.log('AudioAnalyzer: 초기화 시작');
     const audioContext = new AudioContext();
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 2048;
@@ -35,10 +37,12 @@ export function useAudioAnalyzer() {
     analyserRef.current = analyser;
     sourceRef.current = source;
     dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
+    console.log('AudioAnalyzer: 초기화 완료, frequencyBinCount:', analyser.frequencyBinCount);
   }, []);
 
   const getAudioData = useCallback((): AudioData => {
     if (!analyserRef.current || !dataArrayRef.current) {
+      console.warn('AudioAnalyzer: analyser 또는 dataArray가 없음');
       return { bass: 0, mid: 0, treble: 0, isBeat: false, energy: 0 };
     }
 
@@ -58,8 +62,8 @@ export function useAudioAnalyzer() {
     const bassDiff = bass - lastBassRef.current;
     const isBeat = bassDiff > beatThresholdRef.current && bass > 0.3;
 
-    // 디버그 로그 (5% 확률로 출력)
-    if (Math.random() < 0.05) {
+    // 디버그 로그 (20% 확률로 출력)
+    if (Math.random() < 0.2) {
       console.log('Audio:', { bass: bass.toFixed(3), diff: bassDiff.toFixed(3), isBeat, energy: energy.toFixed(3) });
     }
 
@@ -70,8 +74,10 @@ export function useAudioAnalyzer() {
   }, []);
 
   const resume = useCallback(async () => {
+    console.log('AudioAnalyzer: resume 호출, 현재 상태:', audioContextRef.current?.state);
     if (audioContextRef.current?.state === 'suspended') {
       await audioContextRef.current.resume();
+      console.log('AudioAnalyzer: resume 완료, 새 상태:', audioContextRef.current?.state);
     }
   }, []);
 

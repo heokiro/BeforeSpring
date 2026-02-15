@@ -1,58 +1,126 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { useAudioAnalyzer } from '../../hooks/useAudioAnalyzer';
 import { useAudioStore } from '../../stores/audioStore';
+import { updateStep } from '../../hooks/useExhibitionSync';
 
-// 오디오 파일 경로 설정
-const AUDIO_FILE = '/audio/background.wav';
+// 오디오 파일 경로
+const IDLE_AUDIO = '/audio/idle.wav';
+const BG_AUDIO = '/audio/background.wav';
+
+// 시간 기반 단계 진행 (초)
+const STEP3_TIME = 15;
+const STEP4_TIME = 48;
 
 export function AudioPlayer() {
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const idleAudioRef = useRef<HTMLAudioElement>(null);
+  const bgAudioRef = useRef<HTMLAudioElement>(null);
   const animationRef = useRef<number | undefined>(undefined);
-  const { initialize, getAudioData, resume } = useAudioAnalyzer();
-  const { setAudioData, setIsPlaying, setIsInitialized, isInitialized, isPlaying } = useAudioStore();
+  const playbackTimeRef = useRef(0); // background.wav 실제 재생 시간
+  const lastTimeUpdateRef = useRef(0); // 마지막 timeupdate 시점
+  const step3TriggeredRef = useRef(false);
+  const step4TriggeredRef = useRef(false);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null); // 현재 분석 중인 오디오
 
+  const { initialize, getAudioData, resume } = useAudioAnalyzer();
+  const {
+    setAudioData,
+    setIsPlaying,
+    setIsInitialized,
+    setBgPlaybackTime,
+    isInitialized,
+    currentStep,
+    isTouch,
+    hasUserInteracted,
+  } = useAudioStore();
+
+  // 오디오 데이터 업데이트 루프
   const updateAudioData = useCallback(() => {
     const data = getAudioData();
     setAudioData(data);
     animationRef.current = requestAnimationFrame(updateAudioData);
   }, [getAudioData, setAudioData]);
 
-  const handlePlay = useCallback(async () => {
-    if (!audioRef.current) return;
+  // 오디오 분석 시작 (공통)
+  const startAudioAnalysis = useCallback(async (audioElement: HTMLAudioElement) => {
+    try {
+      // 이미 같은 오디오를 분석 중이면 스킵
+      if (currentAudioRef.current === audioElement && isInitialized) {
+        await resume();
+        return;
+      }
+
+      // 새 오디오 소스로 초기화
+      initialize(audioElement);
+      setIsInitialized(true);
+      currentAudioRef.current = audioElement;
+      await resume();
+
+      // 애니메이션 루프 시작 (중복 방지)
+      if (!animationRef.current) {
+        updateAudioData();
+      }
+    } catch (error) {
+      console.error('오디오 분석 시작 실패:', error);
+    }
+  }, [initialize, resume, isInitialized, setIsInitialized, updateAudioData]);
+
+  // idle.wav 재생
+  const playIdle = useCallback(async () => {
+    if (!idleAudioRef.current) return;
 
     try {
-      if (!isInitialized) {
-        initialize(audioRef.current);
-        setIsInitialized(true);
+      // background.wav 정지
+      if (bgAudioRef.current) {
+        bgAudioRef.current.pause();
       }
 
-      await resume();
-      await audioRef.current.play();
+      await startAudioAnalysis(idleAudioRef.current);
+      await idleAudioRef.current.play();
       setIsPlaying(true);
-      updateAudioData();
     } catch (error) {
-      console.error('오디오 재생 실패:', error);
+      console.error('idle.wav 재생 실패:', error);
     }
-  }, [initialize, resume, isInitialized, setIsInitialized, setIsPlaying, updateAudioData]);
+  }, [startAudioAnalysis, setIsPlaying]);
 
-  const handlePause = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
+  // background.wav 재생
+  const playBackground = useCallback(async () => {
+    if (!bgAudioRef.current) return;
+
+    try {
+      // idle.wav 정지
+      if (idleAudioRef.current) {
+        idleAudioRef.current.pause();
       }
-    }
-  }, [setIsPlaying]);
 
-  const togglePlay = useCallback(() => {
-    if (isPlaying) {
-      handlePause();
-    } else {
-      handlePlay();
+      await startAudioAnalysis(bgAudioRef.current);
+      await bgAudioRef.current.play();
+      setIsPlaying(true);
+    } catch (error) {
+      console.error('background.wav 재생 실패:', error);
     }
-  }, [isPlaying, handlePlay, handlePause]);
+  }, [startAudioAnalysis, setIsPlaying]);
 
+  // background.wav 일시정지
+  const pauseBackground = useCallback(() => {
+    if (bgAudioRef.current) {
+      bgAudioRef.current.pause();
+    }
+  }, []);
+
+  // background.wav 재개
+  const resumeBackground = useCallback(async () => {
+    if (!bgAudioRef.current) return;
+
+    try {
+      await startAudioAnalysis(bgAudioRef.current);
+      await bgAudioRef.current.play();
+      setIsPlaying(true);
+    } catch (error) {
+      console.error('background.wav 재개 실패:', error);
+    }
+  }, [startAudioAnalysis, setIsPlaying]);
+
+  // 클린업
   useEffect(() => {
     return () => {
       if (animationRef.current) {
@@ -61,60 +129,145 @@ export function AudioPlayer() {
     };
   }, []);
 
-  // 오디오 끝났을 때 반복 재생
+  // background.wav 시간 추적 및 단계 진행
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    const bgAudio = bgAudioRef.current;
+    if (!bgAudio) return;
 
-    const handleEnded = () => {
-      audio.currentTime = 0;
-      audio.play();
+    const handleTimeUpdate = () => {
+      // 재생 중일 때만 시간 누적
+      if (!bgAudio.paused) {
+        const currentTime = bgAudio.currentTime;
+        const delta = currentTime - lastTimeUpdateRef.current;
+
+        // 정상적인 시간 증가만 누적 (되감기나 점프 방지)
+        if (delta > 0 && delta < 1) {
+          playbackTimeRef.current += delta;
+          setBgPlaybackTime(playbackTimeRef.current);
+
+          // step3 트리거 (15초)
+          if (!step3TriggeredRef.current && playbackTimeRef.current >= STEP3_TIME) {
+            step3TriggeredRef.current = true;
+            updateStep('step3', true);
+            console.log('AudioPlayer: step3 트리거 (15초 경과)');
+          }
+
+          // step4 트리거 (48초)
+          if (!step4TriggeredRef.current && playbackTimeRef.current >= STEP4_TIME) {
+            step4TriggeredRef.current = true;
+            updateStep('step4', true);
+            console.log('AudioPlayer: step4 트리거 (48초 경과)');
+          }
+        }
+
+        lastTimeUpdateRef.current = currentTime;
+      }
     };
 
-    audio.addEventListener('ended', handleEnded);
-    return () => audio.removeEventListener('ended', handleEnded);
+    bgAudio.addEventListener('timeupdate', handleTimeUpdate);
+    return () => bgAudio.removeEventListener('timeupdate', handleTimeUpdate);
+  }, [setBgPlaybackTime]);
+
+  // 오디오 루프 처리
+  useEffect(() => {
+    const idleAudio = idleAudioRef.current;
+    const bgAudio = bgAudioRef.current;
+
+    const handleIdleEnded = () => {
+      if (idleAudio) {
+        idleAudio.currentTime = 0;
+        idleAudio.play();
+      }
+    };
+
+    const handleBgEnded = () => {
+      if (bgAudio) {
+        bgAudio.currentTime = 0;
+        bgAudio.play();
+      }
+    };
+
+    idleAudio?.addEventListener('ended', handleIdleEnded);
+    bgAudio?.addEventListener('ended', handleBgEnded);
+
+    return () => {
+      idleAudio?.removeEventListener('ended', handleIdleEnded);
+      bgAudio?.removeEventListener('ended', handleBgEnded);
+    };
   }, []);
+
+  // 전시 리셋 감지 (step이 0으로 돌아오면 refs 초기화)
+  useEffect(() => {
+    if (currentStep === 0) {
+      // 재생 시간 및 트리거 리셋
+      playbackTimeRef.current = 0;
+      lastTimeUpdateRef.current = 0;
+      step3TriggeredRef.current = false;
+      step4TriggeredRef.current = false;
+
+      // background.wav 처음으로 되감기
+      if (bgAudioRef.current) {
+        bgAudioRef.current.pause();
+        bgAudioRef.current.currentTime = 0;
+      }
+
+      console.log('AudioPlayer: 전시 리셋 - refs 초기화');
+    }
+  }, [currentStep]);
+
+  // 단계별 오디오 제어
+  useEffect(() => {
+    if (!hasUserInteracted) return;
+
+    // step2 이상: background.wav 로직
+    if (currentStep >= 2) {
+      if (isTouch) {
+        // isTouch=true → background.wav 재생
+        if (bgAudioRef.current?.paused) {
+          resumeBackground();
+        }
+      } else {
+        // isTouch=false → background.wav 일시정지
+        pauseBackground();
+      }
+    }
+    // step0 또는 step1: idle.wav 재생
+    else {
+      // background.wav가 재생 중이 아닐 때만 idle.wav 재생
+      if (bgAudioRef.current?.paused || !bgAudioRef.current) {
+        if (idleAudioRef.current?.paused) {
+          playIdle();
+        }
+      }
+    }
+  }, [currentStep, isTouch, hasUserInteracted, playIdle, resumeBackground, pauseBackground]);
+
+  // step2로 처음 진입 시 idle → background 전환
+  useEffect(() => {
+    if (!hasUserInteracted) return;
+
+    if (currentStep === 2 && isTouch) {
+      // idle.wav 정지하고 background.wav 시작
+      playBackground();
+    }
+  }, [currentStep, isTouch, hasUserInteracted, playBackground]);
 
   return (
     <>
-      <audio ref={audioRef} src={AUDIO_FILE} preload="auto" loop crossOrigin="anonymous" />
-
-      {/* 재생 버튼 - 시작 전에만 표시 */}
-      {!isPlaying && (
-        <button
-          onClick={togglePlay}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50
-                     w-24 h-24 rounded-full bg-white/20 hover:bg-white/30
-                     flex items-center justify-center transition-all duration-300
-                     backdrop-blur-sm border border-white/30 hover:scale-110"
-        >
-          <svg
-            className="w-12 h-12 text-white ml-1"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        </button>
-      )}
-
-      {/* 재생 중 일시정지 버튼 (하단에 작게) */}
-      {isPlaying && (
-        <button
-          onClick={togglePlay}
-          className="absolute bottom-4 left-4 z-50 p-3 rounded-full
-                     bg-white/10 hover:bg-white/20 transition-all
-                     opacity-0 hover:opacity-100"
-        >
-          <svg
-            className="w-5 h-5 text-white"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-          </svg>
-        </button>
-      )}
+      <audio
+        ref={idleAudioRef}
+        src={IDLE_AUDIO}
+        preload="auto"
+        loop
+        crossOrigin="anonymous"
+      />
+      <audio
+        ref={bgAudioRef}
+        src={BG_AUDIO}
+        preload="auto"
+        loop
+        crossOrigin="anonymous"
+      />
     </>
   );
 }

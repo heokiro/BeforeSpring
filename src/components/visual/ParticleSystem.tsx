@@ -280,16 +280,12 @@ export function ParticleSystem() {
 
     const { size, speed, rhythmStrength, swayAmount, beatPumpSize, beatPumpSpeed, particleCount, springScaleGrow } = particleSettings;
 
-    // 음악이 멈추면 쌓인 눈 리셋 (다음 재생 시 처음부터)
-    if (!isPlaying && hasStartedRef.current) {
-      hasStartedRef.current = false;
-      settledCountRef.current = 0;
-      for (let i = 0; i < particleCount; i++) {
-        particleData.settled[i] = 0;
-      }
+    // 디버그: 1% 확률로 오디오 데이터 출력
+    if (Math.random() < 0.01) {
+      console.log('ParticleSystem 수신:', { bass: bass.toFixed(3), energy: energy.toFixed(3), isBeat, isPlaying });
     }
 
-    // 음악이 시작되면 플래그 설정
+    // 음악이 시작되면 플래그 설정 (일시정지해도 리셋하지 않음)
     if (isPlaying && !hasStartedRef.current) {
       hasStartedRef.current = true;
     }

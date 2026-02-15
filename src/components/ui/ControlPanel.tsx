@@ -55,7 +55,7 @@ const lerpSettings = (current: ParticleSettings, target: ParticleSettings, t: nu
 });
 
 export function ControlPanel() {
-  const { isPlaying, isSpringMode } = useAudioStore();
+  const { isSpringMode } = useAudioStore();
   const [isOpen, setIsOpen] = useState(false);
   const [settings, setSettings] = useState<ParticleSettings>(WINTER_SETTINGS);
   const targetSettingsRef = useRef<ParticleSettings>(WINTER_SETTINGS);
@@ -107,21 +107,14 @@ export function ControlPanel() {
     particleSettings = newSettings;
   };
 
-  if (!isPlaying) return null;
-
   return (
     <>
-      {/* 설정 열기 버튼 */}
+      {/* 설정 열기 버튼 - 왼쪽 위 코너 투명 버튼 */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="absolute top-4 left-4 z-50 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all"
-      >
-        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
-          />
-        </svg>
-      </button>
+        className="absolute top-0 left-0 z-50 w-16 h-16 opacity-0 hover:opacity-10 bg-white transition-opacity cursor-pointer"
+        aria-label="설정 열기"
+      />
 
       {/* 설정 패널 */}
       {isOpen && (
