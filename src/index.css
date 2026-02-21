@@ -19,7 +19,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 전시 텍스트용 세리프 폰트 */
+/* 전시 텍스트용 폰트 */
 .font-exhibition {
-  font-family: 'Noto Serif KR', serif;
+  font-family: 'Pretendard', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }

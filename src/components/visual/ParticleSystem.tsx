@@ -3,9 +3,12 @@ import { useFrame, useLoader } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useAudioStore } from '../../stores/audioStore';
 import { particleSettings } from '../ui/ControlPanel';
-import sakuraTexture from '../../assets/sprite/벚꽃.png';
+import sakuraTexture1 from '../../assets/sprite/벚꽃.png';
+import sakuraTexture2 from '../../assets/sprite/벚꽃2.png';
+import snowTexture from '../../assets/sprite/snow.png';
 
 const MAX_PARTICLE_COUNT = 10000;
+const MAX_SETTLED_COUNT = 3000; // 정착 파티클 최대 개수 (이 이상이면 오래된 것부터 리스폰)
 
 // 카메라/화면 설정 (App.tsx의 Canvas와 일치)
 const CAMERA_Z = 8;
@@ -15,9 +18,12 @@ const GROUND_UV = 0.01; // 배경 땅 경계 (BackgroundColor.tsx의 groundLine�
 // 파티클별 회전값 (벚꽃잎 회전용)
 const rotations = new Float32Array(MAX_PARTICLE_COUNT);
 const rotationSpeeds = new Float32Array(MAX_PARTICLE_COUNT);
+// 파티클별 텍스처 인덱스 (0 또는 1)
+const textureIndices = new Float32Array(MAX_PARTICLE_COUNT);
 for (let i = 0; i < MAX_PARTICLE_COUNT; i++) {
   rotations[i] = Math.random() * Math.PI * 2;
   rotationSpeeds[i] = (Math.random() - 0.5) * 0.05;
+  textureIndices[i] = Math.random() > 0.5 ? 1.0 : 0.0; // 랜덤하게 텍스처 선택
 }
 
 export function ParticleSystem() {
@@ -27,16 +33,24 @@ export function ParticleSystem() {
   const beatPumpRef = useRef(0); // 비트 펌프 값
   const windBoostRef = useRef(0); // 봄 모드 산들바람 효과
   const settledCountRef = useRef(0);
+  const settledQueueRef = useRef<number[]>([]); // 정착된 파티클 인덱스 큐 (FIFO)
   const hasStartedRef = useRef(false); // 음악 시작 여부 추적
   const prevSpringModeRef = useRef(false); // 이전 봄 모드 상태 (전환 감지용)
   const updraftBoostRef = useRef(0); // 상승기류 효과 (겨울→봄 전환 시 한 번)
 
-  // 벚꽃 텍스처 로드
-  const sakuraTex = useLoader(THREE.TextureLoader, sakuraTexture);
+  // 벚꽃 텍스처 로드 (2개)
+  const sakuraTex1 = useLoader(THREE.TextureLoader, sakuraTexture1);
+  const sakuraTex2 = useLoader(THREE.TextureLoader, sakuraTexture2);
+  // 눈 텍스처 로드
+  const snowTex = useLoader(THREE.TextureLoader, snowTexture);
 
   // 텍스처 설정 (클램프로 경계 처리)
-  sakuraTex.wrapS = THREE.ClampToEdgeWrapping;
-  sakuraTex.wrapT = THREE.ClampToEdgeWrapping;
+  sakuraTex1.wrapS = THREE.ClampToEdgeWrapping;
+  sakuraTex1.wrapT = THREE.ClampToEdgeWrapping;
+  sakuraTex2.wrapS = THREE.ClampToEdgeWrapping;
+  sakuraTex2.wrapT = THREE.ClampToEdgeWrapping;
+  snowTex.wrapS = THREE.ClampToEdgeWrapping;
+  snowTex.wrapT = THREE.ClampToEdgeWrapping;
 
   // 파티클 데이터 - 초기 위치를 화면 위쪽에 배치
   const particleData = useMemo(() => {
@@ -72,6 +86,7 @@ export function ParticleSystem() {
     geo.setAttribute('aOffset', new THREE.BufferAttribute(particleData.offsets, 1));
     geo.setAttribute('aSettled', new THREE.BufferAttribute(particleData.settled, 1));
     geo.setAttribute('aRotation', new THREE.BufferAttribute(rotations, 1));
+    geo.setAttribute('aTexIndex', new THREE.BufferAttribute(textureIndices, 1));
     return geo;
   }, [particleData]);
 
@@ -92,13 +107,16 @@ export function ParticleSystem() {
         uRotationBoost: { value: 0 },  // 봄 모드: 회전 속도 가속
         uColorSnow: { value: new THREE.Color(1.0, 1.0, 1.0) },
         uColorSakura: { value: new THREE.Color(1.0, 0.4, 0.6) },
-        uSakuraTexture: { value: sakuraTex },  // 벚꽃 텍스처
+        uSakuraTexture1: { value: sakuraTex1 },  // 벚꽃 텍스처 1
+        uSakuraTexture2: { value: sakuraTex2 },  // 벚꽃 텍스처 2
+        uSnowTexture: { value: snowTex },  // 눈 텍스처
       },
       vertexShader: `
         attribute float aSize;
         attribute float aOffset;
         attribute float aSettled;
         attribute float aRotation;
+        attribute float aTexIndex;
 
         uniform float uTime;
         uniform float uEnergy;
@@ -117,6 +135,7 @@ export function ParticleSystem() {
         varying float vBeatPump;
         varying float vRotation;
         varying float vOffset;
+        varying float vTexIndex;
 
         void main() {
           vec3 pos = position;
@@ -165,18 +184,22 @@ export function ParticleSystem() {
           float springRotationBoost = uRotationBoost * uTransition * 0.2; // 봄 모드에서만 회전 가속
           vRotation = aRotation + uTime * (rotationSpeed + springRotationBoost) * moveFactor;
           vOffset = aOffset;
+          vTexIndex = aTexIndex;
         }
       `,
       fragmentShader: `
         uniform vec3 uColorSnow;
         uniform vec3 uColorSakura;
-        uniform sampler2D uSakuraTexture;
+        uniform sampler2D uSakuraTexture1;
+        uniform sampler2D uSakuraTexture2;
+        uniform sampler2D uSnowTexture;
 
         varying float vAlpha;
         varying float vTransition;
         varying float vBeatPump;
         varying float vRotation;
         varying float vOffset;
+        varying float vTexIndex;
 
         // 2D 회전 함수
         vec2 rotate2D(vec2 uv, float angle) {
@@ -185,50 +208,34 @@ export function ParticleSystem() {
           return vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c);
         }
 
-        // 눈송이 모양 - 부드럽고 자연스러운 형태
-        float snowflakeShape(vec2 uv, float variation) {
-          float dist = length(uv);
-
-          // 기본: 부드러운 원형 글로우 (실제 눈송이의 기본)
-          float softCircle = exp(-dist * dist * 12.0);
-
-          // 약간의 결정 구조 (일부 파티클에만)
-          float angle = atan(uv.y, uv.x);
-          float crystal = 0.0;
-
-          if (variation > 0.6) {
-            // 6각형 결정 구조 (약하게)
-            float hex = abs(cos(angle * 3.0));
-            crystal = hex * exp(-dist * 8.0) * 0.3;
-          }
-
-          // 중심부 밝은 코어
-          float core = exp(-dist * dist * 40.0);
-
-          // 가장자리 부드러운 페이드
-          float fade = 1.0 - smoothstep(0.3, 0.5, dist);
-
-          return (softCircle * 0.7 + core * 0.5 + crystal) * fade;
-        }
-
         void main() {
           vec2 center = gl_PointCoord - vec2(0.5);
 
-          // 눈송이 모양 계산
-          float snowShape = snowflakeShape(center, vOffset);
-
-          // 벚꽃 텍스처 샘플링 (회전 적용)
+          // 벚꽃용 회전 UV (봄 모드에서만 회전)
           vec2 rotatedUV = rotate2D(center, vRotation);
-          vec2 texCoord = rotatedUV + vec2(0.5); // 0~1 범위로 변환
+          vec2 sakuraTexCoord = rotatedUV + vec2(0.5);
+
+          // 눈용 UV (회전 없음)
+          vec2 snowTexCoord = gl_PointCoord;
 
           // UV가 0~1 범위 밖이면 투명 처리
-          float inBounds = step(0.0, texCoord.x) * step(texCoord.x, 1.0) *
-                          step(0.0, texCoord.y) * step(texCoord.y, 1.0);
-          vec4 sakuraTexColor = texture2D(uSakuraTexture, texCoord) * inBounds;
+          float sakuraInBounds = step(0.0, sakuraTexCoord.x) * step(sakuraTexCoord.x, 1.0) *
+                          step(0.0, sakuraTexCoord.y) * step(sakuraTexCoord.y, 1.0);
 
-          // 눈 색상: 순백색 + 약간의 푸른 빛
-          vec3 snowColor = vec3(0.98, 0.99, 1.0);
-          float snowAlpha = snowShape * vAlpha;
+          // 눈 텍스처 샘플링 (회전 없음)
+          vec4 snowTexColor = texture2D(uSnowTexture, snowTexCoord);
+
+          // 텍스처 인덱스에 따라 다른 벚꽃 텍스처 사용 (회전 적용)
+          vec4 sakuraTexColor;
+          if (vTexIndex < 0.5) {
+            sakuraTexColor = texture2D(uSakuraTexture1, sakuraTexCoord) * sakuraInBounds;
+          } else {
+            sakuraTexColor = texture2D(uSakuraTexture2, sakuraTexCoord) * sakuraInBounds;
+          }
+
+          // 눈: 텍스처 색상 사용
+          vec3 snowColor = snowTexColor.rgb;
+          float snowAlpha = snowTexColor.a * vAlpha;
 
           // 벚꽃: 텍스처 색상 그대로 사용
           vec3 sakuraColor = sakuraTexColor.rgb;
@@ -239,25 +246,17 @@ export function ParticleSystem() {
           float alpha;
 
           if (vTransition > 0.99) {
-            // 완전 봄 모드: 텍스처만 표시
+            // 완전 봄 모드: 벚꽃 텍스처만 표시
             color = sakuraColor;
             alpha = sakuraAlpha;
           } else if (vTransition < 0.01) {
-            // 완전 겨울 모드: 눈만 표시
+            // 완전 겨울 모드: 눈 텍스처만 표시
             color = snowColor;
             alpha = snowAlpha;
-            // 눈 글로우 효과
-            float dist = length(center);
-            float snowGlow = exp(-dist * dist * 20.0);
-            color += snowGlow * 0.3;
           } else {
             // 전환 중
             color = mix(snowColor, sakuraColor, vTransition);
             alpha = mix(snowAlpha, sakuraAlpha, vTransition);
-            // 눈 글로우는 전환 중에만 적용
-            float dist = length(center);
-            float snowGlow = exp(-dist * dist * 20.0);
-            color += snowGlow * 0.3 * (1.0 - vTransition);
           }
 
           // 비트 펌프 시 밝기 증가 (눈에만 적용, 벚꽃은 제외)
@@ -273,7 +272,7 @@ export function ParticleSystem() {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-  }, [sakuraTex]);
+  }, [sakuraTex1, sakuraTex2, snowTex]);
 
   useFrame((state) => {
     if (!pointsRef.current) return;
@@ -336,8 +335,22 @@ export function ParticleSystem() {
     // 봄이 되면 쌓인 눈 리셋
     if (!isWinter && settledCountRef.current > 0) {
       settledCountRef.current = 0;
+      settledQueueRef.current = [];
       for (let i = 0; i < particleCount; i++) {
         settled[i] = 0;
+      }
+    }
+
+    // 정착 파티클이 한계를 초과하면 오래된 것부터 리스폰
+    while (settledQueueRef.current.length > MAX_SETTLED_COUNT) {
+      const oldIndex = settledQueueRef.current.shift()!;
+      if (settled[oldIndex] > 0) {
+        settled[oldIndex] = 0;
+        // 위쪽에서 다시 떨어지도록 리스폰
+        positions[oldIndex * 3] = (Math.random() - 0.5) * 20;
+        positions[oldIndex * 3 + 1] = 10 + Math.random() * 5;
+        positions[oldIndex * 3 + 2] = -6 + Math.random() * 5;
+        settledCountRef.current--;
       }
     }
 
@@ -396,6 +409,7 @@ export function ParticleSystem() {
             const groundY = GROUND_UV * (2 * screenHalfHeight) - screenHalfHeight;
             positions[i3 + 1] = groundY + Math.random() * 0.1;
             settledCountRef.current++;
+            settledQueueRef.current.push(i); // 큐에 추가
           } else {
             // 음악 시작 전이거나 화면 밖이면 리스폰 (계속 내림)
             positions[i3 + 1] = 10 + Math.random() * 5;

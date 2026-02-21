@@ -53,7 +53,7 @@ export function useExhibitionTimers() {
         clearTimeout(resetTimerRef.current);
       }
 
-      // 1분 후 전시 리셋 (페이지 새로고침 없이)
+      // 55초 후 전시 리셋 (페이지 새로고침 없이)
       resetTimerRef.current = setTimeout(() => {
         console.log('useExhibitionTimers: 전시 리셋');
         // Firebase에 리셋 신호 전송
@@ -61,7 +61,7 @@ export function useExhibitionTimers() {
         // 로컬 상태 리셋
         setBgPlaybackTime(0);
         setShowCredits(false);
-      }, 60000);
+      }, 55000);
     } else {
       // 크레딧이 숨겨지면 타이머 정리
       if (resetTimerRef.current) {

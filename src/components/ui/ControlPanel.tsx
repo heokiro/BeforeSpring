@@ -14,12 +14,12 @@ export interface ParticleSettings {
 
 // 겨울 모드 (눈)
 const WINTER_SETTINGS: ParticleSettings = {
-  size: 2.5,
+  size: 3,
   speed: 0.2,
   rhythmStrength: 0.1,
-  swayAmount: 0.1,
-  beatPumpSize: 1.4,
-  beatPumpSpeed: 0.01,
+  swayAmount: 0.2,
+  beatPumpSize: 0.3,
+  beatPumpSpeed: 0.02,
   particleCount: 5000,
   springScaleGrow: 0,
 };

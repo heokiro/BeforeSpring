@@ -25,9 +25,7 @@ export function AudioPlayer() {
   const {
     setAudioData,
     setIsPlaying,
-    setIsInitialized,
     setBgPlaybackTime,
-    isInitialized,
     currentStep,
     isTouch,
     hasUserInteracted,
@@ -43,15 +41,8 @@ export function AudioPlayer() {
   // 오디오 분석 시작 (공통)
   const startAudioAnalysis = useCallback(async (audioElement: HTMLAudioElement) => {
     try {
-      // 이미 같은 오디오를 분석 중이면 스킵
-      if (currentAudioRef.current === audioElement && isInitialized) {
-        await resume();
-        return;
-      }
-
-      // 새 오디오 소스로 초기화
+      // 오디오 소스 초기화/전환 (항상 호출 - 내부에서 전환 처리)
       initialize(audioElement);
-      setIsInitialized(true);
       currentAudioRef.current = audioElement;
       await resume();
 
@@ -62,7 +53,7 @@ export function AudioPlayer() {
     } catch (error) {
       console.error('오디오 분석 시작 실패:', error);
     }
-  }, [initialize, resume, isInitialized, setIsInitialized, updateAudioData]);
+  }, [initialize, resume, updateAudioData]);
 
   // idle.wav 재생
   const playIdle = useCallback(async () => {

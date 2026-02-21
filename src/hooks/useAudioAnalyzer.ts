@@ -12,37 +12,60 @@ export function useAudioAnalyzer() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const dataArrayRef = useRef<Uint8Array | null>(null);
-  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  // 여러 오디오 요소의 소스를 저장하는 Map
+  const sourcesRef = useRef<Map<HTMLAudioElement, MediaElementAudioSourceNode>>(new Map());
+  const currentSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const lastBassRef = useRef(0);
   const beatThresholdRef = useRef(0.02);
 
   const initialize = useCallback((audioElement: HTMLAudioElement) => {
-    // 이미 초기화되었으면 스킵
-    if (audioContextRef.current && sourceRef.current) {
-      console.log('AudioAnalyzer: 이미 초기화됨, 스킵');
-      return;
+    // AudioContext와 Analyser가 없으면 생성
+    if (!audioContextRef.current) {
+      console.log('AudioAnalyzer: AudioContext 생성');
+      audioContextRef.current = new AudioContext();
     }
 
-    console.log('AudioAnalyzer: 초기화 시작');
-    const audioContext = new AudioContext();
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.8;
+    if (!analyserRef.current) {
+      console.log('AudioAnalyzer: Analyser 생성');
+      const analyser = audioContextRef.current.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.8;
+      analyser.connect(audioContextRef.current.destination);
+      analyserRef.current = analyser;
+      dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
+    }
 
-    const source = audioContext.createMediaElementSource(audioElement);
-    source.connect(analyser);
-    analyser.connect(audioContext.destination);
+    // 이 오디오 요소에 대한 소스가 이미 있는지 확인
+    let source = sourcesRef.current.get(audioElement);
 
-    audioContextRef.current = audioContext;
-    analyserRef.current = analyser;
-    sourceRef.current = source;
-    dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
-    console.log('AudioAnalyzer: 초기화 완료, frequencyBinCount:', analyser.frequencyBinCount);
+    if (!source) {
+      // 새 오디오 요소에 대한 소스 생성
+      console.log('AudioAnalyzer: 새 오디오 소스 생성');
+      source = audioContextRef.current.createMediaElementSource(audioElement);
+      sourcesRef.current.set(audioElement, source);
+    }
+
+    // 현재 소스가 다르면 연결 전환
+    if (currentSourceRef.current !== source) {
+      // 이전 소스 연결 해제
+      if (currentSourceRef.current) {
+        try {
+          currentSourceRef.current.disconnect(analyserRef.current);
+          console.log('AudioAnalyzer: 이전 소스 연결 해제');
+        } catch (e) {
+          // 이미 연결 해제되어 있을 수 있음
+        }
+      }
+
+      // 새 소스를 analyser에 연결
+      source.connect(analyserRef.current);
+      currentSourceRef.current = source;
+      console.log('AudioAnalyzer: 새 소스 연결 완료');
+    }
   }, []);
 
   const getAudioData = useCallback((): AudioData => {
     if (!analyserRef.current || !dataArrayRef.current) {
-      console.warn('AudioAnalyzer: analyser 또는 dataArray가 없음');
       return { bass: 0, mid: 0, treble: 0, isBeat: false, energy: 0 };
     }
 
@@ -62,11 +85,6 @@ export function useAudioAnalyzer() {
     const bassDiff = bass - lastBassRef.current;
     const isBeat = bassDiff > beatThresholdRef.current && bass > 0.3;
 
-    // 디버그 로그 (20% 확률로 출력)
-    if (Math.random() < 0.2) {
-      console.log('Audio:', { bass: bass.toFixed(3), diff: bassDiff.toFixed(3), isBeat, energy: energy.toFixed(3) });
-    }
-
     // 적응형 임계값 업데이트 (느리게 따라가서 diff가 커지도록)
     lastBassRef.current = bass * 0.1 + lastBassRef.current * 0.9;
 
@@ -74,10 +92,9 @@ export function useAudioAnalyzer() {
   }, []);
 
   const resume = useCallback(async () => {
-    console.log('AudioAnalyzer: resume 호출, 현재 상태:', audioContextRef.current?.state);
     if (audioContextRef.current?.state === 'suspended') {
       await audioContextRef.current.resume();
-      console.log('AudioAnalyzer: resume 완료, 새 상태:', audioContextRef.current?.state);
+      console.log('AudioAnalyzer: resume 완료');
     }
   }, []);
 

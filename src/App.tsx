@@ -4,6 +4,8 @@ import { ParticleSystem } from './components/visual/ParticleSystem';
 import { BackgroundColor } from './components/visual/BackgroundColor';
 import { ExhibitionText } from './components/ui/ExhibitionText';
 import { CreditsOverlay } from './components/ui/CreditsOverlay';
+import { CreditsPreview } from './components/ui/CreditsPreview';
+import { SpringPreview } from './components/ui/SpringPreview';
 import { StartOverlay } from './components/ui/StartOverlay';
 import { AudioPlayer } from './components/audio/AudioPlayer';
 import { SpringButton } from './components/ui/SpringButton';
@@ -13,6 +15,19 @@ import { useExhibitionTimers } from './hooks/useExhibitionTimers';
 import './index.css';
 
 function App() {
+  // URL 파라미터로 미리보기 모드 확인
+  const urlParams = new URLSearchParams(window.location.search);
+  const previewMode = urlParams.get('preview');
+
+  // 크레딧 미리보기 모드
+  if (previewMode === 'credits') {
+    return <CreditsPreview />;
+  }
+
+  // 봄 배경 미리보기 모드
+  if (previewMode === 'spring') {
+    return <SpringPreview />;
+  }
   // Firebase DB와 전시 상태 실시간 동기화
   useExhibitionSync();
 
