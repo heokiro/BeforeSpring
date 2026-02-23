@@ -11,6 +11,12 @@ const GUIDE_TEXT = [
   '두 손으로 가볍게 감싸주세요'
 ];
 
+// 주의사항 (TOUCH_PROMPT 아래에 표시)
+const CAUTION_TEXT = [
+  '손 조각상은 세게 누르거나, 움직이면 파손될 수 있습니다.',
+  '가볍게 감싸듯 손을 올려주시면 충분합니다.'
+];
+
 // 페이드 전환 시간 (ms)
 const FADE_DURATION = 500;
 
@@ -30,7 +36,10 @@ function ForewordText() {
 
       {/* 무인/무료 안내 */}
       <p className="text-xl md:text-2xl font-light text-white/70" style={{ marginTop: '1.5rem' }}>
-        무인으로 운영되며, 누구나 무료로 관람하실 수 있습니다
+        오롯이 작품에만 집중하실 수 있도록 무인으로 운영되는 무료 전시입니다
+      </p>
+      <p className="text-xl md:text-2xl font-light text-white/70" style={{ marginTop: '0.25rem' }}>
+        손 조각상 앞에 다가가 머물러 주시면 전시가 시작됩니다
       </p>
 
       {/* 안내사항 2 블록 */}
@@ -89,13 +98,23 @@ function ForewordText() {
 // 안내 문구 컴포넌트 (2, 3단계)
 function PromptText() {
   return (
-    <h1 className="text-center font-exhibition text-5xl md:text-6xl lg:text-7xl font-light text-white tracking-wider">
-      {TOUCH_PROMPT}
-    </h1>
+    <div className="text-center font-exhibition text-white flex flex-col items-center justify-center">
+      <h1 className="text-5xl md:text-6xl lg:text-7xl font-light tracking-wider">
+        {TOUCH_PROMPT}
+      </h1>
+      {/* 주의사항 - TOUCH_PROMPT 바로 아래 */}
+      <div style={{ marginTop: '3rem' }}>
+        {CAUTION_TEXT.map((line, i) => (
+          <p key={i} className="text-lg md:text-xl font-light text-white" style={{ marginBottom: '0.5rem' }}>
+            {line}
+          </p>
+        ))}
+      </div>
+    </div>
   );
 }
 
-// Step 1용 컴포넌트 (안내 문구 + TOUCH_PROMPT)
+// Step 1용 컴포넌트 (안내 문구 + TOUCH_PROMPT + 주의사항)
 function GuideWithPromptText() {
   return (
     <div className="text-center font-exhibition text-white relative w-full h-full flex items-center justify-center">
@@ -107,10 +126,20 @@ function GuideWithPromptText() {
           </p>
         ))}
       </div>
-      {/* TOUCH_PROMPT - 화면 중앙 */}
-      <h1 className="text-5xl md:text-6xl lg:text-7xl font-light tracking-wider">
-        {TOUCH_PROMPT}
-      </h1>
+      {/* 중앙 영역: TOUCH_PROMPT + 주의사항 */}
+      <div className="flex flex-col items-center">
+        <h1 className="text-5xl md:text-6xl lg:text-7xl font-light tracking-wider">
+          {TOUCH_PROMPT}
+        </h1>
+        {/* 주의사항 - TOUCH_PROMPT 바로 아래 */}
+        <div style={{ marginTop: '3rem' }}>
+          {CAUTION_TEXT.map((line, i) => (
+            <p key={i} className="text-lg md:text-xl font-light text-white" style={{ marginBottom: '0.5rem' }}>
+              {line}
+            </p>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

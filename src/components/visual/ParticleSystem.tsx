@@ -2,7 +2,7 @@ import { useRef, useMemo } from 'react';
 import { useFrame, useLoader } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useAudioStore } from '../../stores/audioStore';
-import { particleSettings } from '../ui/ControlPanel';
+import { particleSettings, rainSettings } from '../ui/ControlPanel';
 import sakuraTexture1 from '../../assets/sprite/벚꽃.png';
 import sakuraTexture2 from '../../assets/sprite/벚꽃2.png';
 import snowTexture from '../../assets/sprite/snow.png';
@@ -28,8 +28,9 @@ for (let i = 0; i < MAX_PARTICLE_COUNT; i++) {
 
 export function ParticleSystem() {
   const pointsRef = useRef<THREE.Points>(null);
-  const { bass, energy, isBeat, isSpringMode, isPlaying } = useAudioStore();
+  const { bass, energy, isBeat, isSpringMode, isPlaying, currentStep } = useAudioStore();
   const transitionRef = useRef(0);
+  const rainTransitionRef = useRef(0); // 비 모드 전환값 (0 = 눈/벚꽃, 1 = 비)
   const beatPumpRef = useRef(0); // 비트 펌프 값
   const windBoostRef = useRef(0); // 봄 모드 산들바람 효과
   const settledCountRef = useRef(0);
@@ -37,6 +38,9 @@ export function ParticleSystem() {
   const hasStartedRef = useRef(false); // 음악 시작 여부 추적
   const prevSpringModeRef = useRef(false); // 이전 봄 모드 상태 (전환 감지용)
   const updraftBoostRef = useRef(0); // 상승기류 효과 (겨울→봄 전환 시 한 번)
+  const springStartTimeRef = useRef<number | null>(null); // 봄 모드 시작 시간
+  const updraftDelayPassed = useRef(false); // 상승기류 딜레이 경과 여부
+  const UPDRAFT_DELAY = 5000; // 상승기류 딜레이 (5초)
 
   // 벚꽃 텍스처 로드 (2개)
   const sakuraTex1 = useLoader(THREE.TextureLoader, sakuraTexture1);
@@ -100,6 +104,11 @@ export function ParticleSystem() {
         uBeatPump: { value: 0 },  // 비트 펌프 효과
         uBeatPumpSize: { value: 0.8 },  // 비트 펌프 크기
         uTransition: { value: 0 },
+        uRainMode: { value: 0 },  // 비 모드 (0 = 눈/벚꽃, 1 = 비)
+        uRainStretch: { value: 0.25 },  // 비 세로 길이
+        uRainSqueeze: { value: 1.5 },   // 비 가로 좁힘
+        uRainSwayReduction: { value: 0.8 }, // 비 흔들림 감소
+        uRainSize: { value: 0.8 },      // 비 크기 배수
         uSizeMultiplier: { value: 1.5 },
         uRhythmStrength: { value: 1.5 },
         uSwayAmount: { value: 1.0 },
@@ -107,6 +116,7 @@ export function ParticleSystem() {
         uRotationBoost: { value: 0 },  // 봄 모드: 회전 속도 가속
         uColorSnow: { value: new THREE.Color(1.0, 1.0, 1.0) },
         uColorSakura: { value: new THREE.Color(1.0, 0.4, 0.6) },
+        uColorRain: { value: new THREE.Color(0.7, 0.85, 1.0) },  // 비 색상 (연한 파랑)
         uSakuraTexture1: { value: sakuraTex1 },  // 벚꽃 텍스처 1
         uSakuraTexture2: { value: sakuraTex2 },  // 벚꽃 텍스처 2
         uSnowTexture: { value: snowTex },  // 눈 텍스처
@@ -124,6 +134,11 @@ export function ParticleSystem() {
         uniform float uBeatPump;
         uniform float uBeatPumpSize;
         uniform float uTransition;
+        uniform float uRainMode;
+        uniform float uRainStretch;
+        uniform float uRainSqueeze;
+        uniform float uRainSwayReduction;
+        uniform float uRainSize;
         uniform float uSizeMultiplier;
         uniform float uRhythmStrength;
         uniform float uSwayAmount;
@@ -132,6 +147,7 @@ export function ParticleSystem() {
 
         varying float vAlpha;
         varying float vTransition;
+        varying float vRainMode;
         varying float vBeatPump;
         varying float vRotation;
         varying float vOffset;
@@ -143,19 +159,22 @@ export function ParticleSystem() {
           // 정착하지 않은 파티클만 흔들림 효과 적용
           float moveFactor = 1.0 - aSettled;
 
+          // 비 모드에서는 흔들림 감소
+          float rainSwayReduce = 1.0 - uRainMode * uRainSwayReduction;
+
           // 부드러운 흔들림
-          float sway = sin(uTime * 0.4 + aOffset) * 0.5 * uSwayAmount * moveFactor;
-          float drift = cos(uTime * 0.25 + aOffset * 1.5) * 0.4 * uSwayAmount * moveFactor;
+          float sway = sin(uTime * 0.4 + aOffset) * 0.5 * uSwayAmount * moveFactor * rainSwayReduce;
+          float drift = cos(uTime * 0.25 + aOffset * 1.5) * 0.4 * uSwayAmount * moveFactor * rainSwayReduce;
 
           // 리듬에 반응하는 움직임
-          float rhythmX = sin(uTime * 1.5 + aOffset) * uBass * uRhythmStrength * moveFactor;
-          float rhythmZ = cos(uTime * 1.5 + aOffset) * uBass * uRhythmStrength * 0.7 * moveFactor;
+          float rhythmX = sin(uTime * 1.5 + aOffset) * uBass * uRhythmStrength * moveFactor * rainSwayReduce;
+          float rhythmZ = cos(uTime * 1.5 + aOffset) * uBass * uRhythmStrength * 0.7 * moveFactor * rainSwayReduce;
 
           pos.x += sway + rhythmX;
           pos.z += drift + rhythmZ;
 
-          // 에너지에 따른 움직임
-          float floatEffect = uEnergy * sin(aOffset + uTime * 0.6) * 0.5 * uRhythmStrength * moveFactor;
+          // 에너지에 따른 움직임 (비 모드에서는 약함)
+          float floatEffect = uEnergy * sin(aOffset + uTime * 0.6) * 0.5 * uRhythmStrength * moveFactor * rainSwayReduce;
           pos.y += floatEffect;
 
           vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
@@ -163,6 +182,9 @@ export function ParticleSystem() {
           // 크기 계산 (비트 펌프 효과 추가)
           float energySize = 1.0 + uEnergy * 0.4 * moveFactor;
           float springBonus = uTransition * 0.3; // 벚꽃잎이 좀 더 크게
+
+          // 비 모드: 파티클 크기 조절 (빗방울)
+          float rainSizeAdjust = 1.0 - uRainMode * (1.0 - uRainSize);
 
           // 파티클별로 다른 비트 펌프 강도 (약 40%만 강하게 반응)
           float beatResponse = smoothstep(0.3, 0.7, fract(aOffset * 3.14159));
@@ -172,17 +194,19 @@ export function ParticleSystem() {
           float heightFactor = smoothstep(-8.0, 10.0, position.y); // 0 ~ 1
           float springGrowSize = 1.0 + heightFactor * uSpringScaleGrow * uTransition;
 
-          gl_PointSize = aSize * uSizeMultiplier * energySize * beatSize * springGrowSize * (1.0 + springBonus) * (350.0 / -mvPosition.z);
+          gl_PointSize = aSize * uSizeMultiplier * energySize * beatSize * springGrowSize * rainSizeAdjust * (1.0 + springBonus) * (350.0 / -mvPosition.z);
 
           gl_Position = projectionMatrix * mvPosition;
 
           vAlpha = smoothstep(-8.0, 6.0, position.y) * 0.9;
           vTransition = uTransition;
+          vRainMode = uRainMode;
           vBeatPump = uBeatPump * beatResponse * moveFactor;
           // 회전 애니메이션 (떨어지면서 회전 + 봄 모드: 에너지에 따라 가속)
+          // 비 모드에서는 회전 없음
           float rotationSpeed = 0.5 + aOffset * 0.5;
           float springRotationBoost = uRotationBoost * uTransition * 0.2; // 봄 모드에서만 회전 가속
-          vRotation = aRotation + uTime * (rotationSpeed + springRotationBoost) * moveFactor;
+          vRotation = aRotation + uTime * (rotationSpeed + springRotationBoost) * moveFactor * (1.0 - uRainMode);
           vOffset = aOffset;
           vTexIndex = aTexIndex;
         }
@@ -190,12 +214,16 @@ export function ParticleSystem() {
       fragmentShader: `
         uniform vec3 uColorSnow;
         uniform vec3 uColorSakura;
+        uniform vec3 uColorRain;
         uniform sampler2D uSakuraTexture1;
         uniform sampler2D uSakuraTexture2;
         uniform sampler2D uSnowTexture;
+        uniform float uRainStretch;
+        uniform float uRainSqueeze;
 
         varying float vAlpha;
         varying float vTransition;
+        varying float vRainMode;
         varying float vBeatPump;
         varying float vRotation;
         varying float vOffset;
@@ -210,6 +238,19 @@ export function ParticleSystem() {
 
         void main() {
           vec2 center = gl_PointCoord - vec2(0.5);
+
+          // 비 모드: 세로로 긴 타원형 빗방울 효과
+          vec2 rainCenter = center;
+          // 세로로 늘린 타원형 (더 날씬한 빗방울)
+          rainCenter.y *= uRainStretch; // 세로 압축 = 세로로 더 긴 타원
+          rainCenter.x *= uRainSqueeze; // 가로 확대 = 더 좁게
+          float rainDist = length(rainCenter);
+          // 부드러운 원형 그라데이션
+          float dropShape = smoothstep(0.2, 0.05, rainDist);
+          // 아래쪽이 약간 흐려지는 효과
+          float motionBlur = 1.0 - center.y * 0.4;
+
+          float rainAlpha = dropShape * motionBlur * vAlpha;
 
           // 벚꽃용 회전 UV (봄 모드에서만 회전)
           vec2 rotatedUV = rotate2D(center, vRotation);
@@ -237,6 +278,9 @@ export function ParticleSystem() {
           vec3 snowColor = snowTexColor.rgb;
           float snowAlpha = snowTexColor.a * vAlpha;
 
+          // 비: 연한 파란색 그라데이션
+          vec3 rainColor = uColorRain;
+
           // 벚꽃: 텍스처 색상 그대로 사용
           vec3 sakuraColor = sakuraTexColor.rgb;
           float sakuraAlpha = sakuraTexColor.a * vAlpha;
@@ -245,7 +289,20 @@ export function ParticleSystem() {
           vec3 color;
           float alpha;
 
-          if (vTransition > 0.99) {
+          // 비 모드 체크 (vRainMode > 0)
+          if (vRainMode > 0.01) {
+            // 비 모드
+            if (vTransition > 0.01) {
+              // 비 → 벚꽃 전환 중
+              color = mix(rainColor, sakuraColor, vTransition);
+              alpha = mix(rainAlpha, sakuraAlpha, vTransition);
+            } else {
+              // 순수 비 모드
+              color = rainColor;
+              alpha = rainAlpha * vRainMode + snowAlpha * (1.0 - vRainMode);
+              color = mix(snowColor, rainColor, vRainMode);
+            }
+          } else if (vTransition > 0.99) {
             // 완전 봄 모드: 벚꽃 텍스처만 표시
             color = sakuraColor;
             alpha = sakuraAlpha;
@@ -254,13 +311,13 @@ export function ParticleSystem() {
             color = snowColor;
             alpha = snowAlpha;
           } else {
-            // 전환 중
+            // 눈 → 벚꽃 전환 중
             color = mix(snowColor, sakuraColor, vTransition);
             alpha = mix(snowAlpha, sakuraAlpha, vTransition);
           }
 
-          // 비트 펌프 시 밝기 증가 (눈에만 적용, 벚꽃은 제외)
-          color += vBeatPump * 0.2 * (1.0 - vTransition);
+          // 비트 펌프 시 밝기 증가 (눈에만 적용, 벚꽃/비는 제외)
+          color += vBeatPump * 0.2 * (1.0 - vTransition) * (1.0 - vRainMode);
 
           // 알파가 너무 낮으면 버림
           if (alpha < 0.02) discard;
@@ -292,15 +349,35 @@ export function ParticleSystem() {
     // 렌더링할 파티클 수 설정
     pointsRef.current.geometry.setDrawRange(0, particleCount);
 
-    // 모드 전환
+    // 비 모드 전환 (step3 = 비)
+    const isRainMode = currentStep === 3;
+    const targetRainTransition = isRainMode ? 1 : 0;
+    rainTransitionRef.current = THREE.MathUtils.lerp(rainTransitionRef.current, targetRainTransition, 0.03);
+
+    // 모드 전환 (step4 = 봄/벚꽃)
     const targetTransition = isSpringMode ? 1 : 0;
     transitionRef.current = THREE.MathUtils.lerp(transitionRef.current, targetTransition, 0.02);
 
-    // 겨울→봄 전환 감지: 상승기류 효과 발동
+    // 겨울→봄 전환 감지: 5초 후 상승기류 발동
     if (isSpringMode && !prevSpringModeRef.current) {
-      updraftBoostRef.current = 1.0; // 상승기류 시작
+      springStartTimeRef.current = Date.now(); // 봄 시작 시간 기록
+      updraftDelayPassed.current = false; // 딜레이 리셋
+    }
+    // 겨울로 돌아가면 리셋
+    if (!isSpringMode && prevSpringModeRef.current) {
+      springStartTimeRef.current = null;
+      updraftDelayPassed.current = false;
     }
     prevSpringModeRef.current = isSpringMode;
+
+    // 5초 후 상승기류 발동
+    if (springStartTimeRef.current && !updraftDelayPassed.current) {
+      const elapsed = Date.now() - springStartTimeRef.current;
+      if (elapsed >= UPDRAFT_DELAY) {
+        updraftDelayPassed.current = true;
+        updraftBoostRef.current = 1.0; // 상승기류 시작
+      }
+    }
 
     // 상승기류 효과 감쇠
     updraftBoostRef.current = THREE.MathUtils.lerp(updraftBoostRef.current, 0, 0.015);
@@ -329,11 +406,13 @@ export function ParticleSystem() {
     const positions = posAttr.array as Float32Array;
     const { velocities, settled } = particleData;
 
+    // 봄 모드지만 딜레이가 안 지났으면 여전히 아래로 떨어짐
     const isWinter = transitionRef.current < 0.5;
-    const direction = isWinter ? -1 : 1;
+    const isFalling = isWinter || !updraftDelayPassed.current; // 딜레이 전까지는 낙하
+    const direction = isFalling ? -1 : 1;
 
-    // 봄이 되면 쌓인 눈 리셋
-    if (!isWinter && settledCountRef.current > 0) {
+    // 봄이 되거나 비 모드가 되면 쌓인 눈 리셋 (눈 녹음)
+    if ((!isWinter || rainTransitionRef.current > 0.3) && settledCountRef.current > 0) {
       settledCountRef.current = 0;
       settledQueueRef.current = [];
       for (let i = 0; i < particleCount; i++) {
@@ -370,24 +449,33 @@ export function ParticleSystem() {
       // 속도 (비트 펌프 시 약간 느려짐 - 확대되는 순간 정지 느낌)
       const beatSlowdown = 1.0 - beatPumpRef.current * 0.3;
       const rhythmBoost = 1 + bass * rhythmStrength * 0.5;
-      // 봄 모드: 산들바람으로 가속 (1.0 ~ 1.8배 속도)
-      const windMultiplier = isWinter ? 1.0 : (1.0 + windBoostRef.current * 0.8);
-      const baseSpeed = velocities[i3 + 1] * speed * rhythmBoost * beatSlowdown * windMultiplier;
+      // 봄 모드(상승 중): 산들바람으로 가속 (1.0 ~ 1.8배 속도)
+      const windMultiplier = isFalling ? 1.0 : (1.0 + windBoostRef.current * 0.8);
+      // 비 모드: 더 빠르고 균일하게 떨어짐
+      // 비 모드에서는 속도 변동을 줄이고 기본 속도를 높임
+      const rainFactor = rainTransitionRef.current;
+      const normalizedSpeed = velocities[i3 + 1]; // 0.008 ~ 0.023 범위
+      // 비 모드: 속도를 균일하게 만들고 rainSettings.speed 배수 적용
+      const rainSpeedMultiplier = rainSettings.speed - 1; // 1 기준이므로 -1
+      const rainBaseSpeed = rainFactor > 0.1
+        ? (normalizedSpeed * (1 - rainFactor * 0.5) + 0.018 * rainFactor * 0.5) * (1 + rainFactor * rainSpeedMultiplier)
+        : normalizedSpeed;
+      const baseSpeed = rainBaseSpeed * speed * rhythmBoost * beatSlowdown * windMultiplier;
 
-      // 상승기류 효과 (겨울→봄 전환 시 강한 상승)
+      // 상승기류 효과 (딜레이 후 발동)
       const updraftSpeed = updraftBoostRef.current * 0.15 * (0.5 + Math.random() * 0.5);
 
       positions[i3 + 1] += baseSpeed * direction + updraftSpeed;
 
-      // 좌우 흔들림 (봄 모드: 개별 흔들림 가속)
-      const swayMultiplier = isWinter ? 1.0 : (1.0 + windBoostRef.current * 1.5);
+      // 좌우 흔들림 (봄 상승 모드: 개별 흔들림 가속)
+      const swayMultiplier = isFalling ? 1.0 : (1.0 + windBoostRef.current * 1.5);
       const swaySpeed = velocities[i3] * swayAmount * swayMultiplier;
       positions[i3] += swaySpeed + (isBeat ? (Math.random() - 0.5) * 0.05 * rhythmStrength : 0);
       positions[i3 + 2] += velocities[i3 + 2] * swayAmount * swayMultiplier;
 
       // 경계 처리
-      if (direction < 0) {
-        // 겨울: 아래로 떨어짐
+      if (isFalling) {
+        // 낙하 모드 (겨울 또는 봄 딜레이 중): 아래로 떨어짐
         // Z가 카메라에 너무 가까우면 부드럽게 뒤로 밀어냄
         if (positions[i3 + 2] > -2) {
           positions[i3 + 2] += ((-3 - positions[i3 + 2]) * 0.02);
@@ -402,8 +490,9 @@ export function ParticleSystem() {
 
         // 땅 경계(UV 0.15) 아래면 처리
         if (uvY < GROUND_UV) {
-          // 음악이 시작된 후에만 정착 (화면 안쪽에 있을 때)
-          if (hasStartedRef.current && Math.abs(positions[i3]) < 8 && Math.abs(positions[i3 + 2]) < 4) {
+          // 겨울에만 정착 (비 모드나 봄 딜레이 중에는 정착하지 않고 리스폰)
+          const canSettle = isWinter && rainTransitionRef.current < 0.3;
+          if (canSettle && hasStartedRef.current && Math.abs(positions[i3]) < 8 && Math.abs(positions[i3 + 2]) < 4) {
             settled[i] = 1;
             // 정확히 땅 경계 위치로 이동
             const groundY = GROUND_UV * (2 * screenHalfHeight) - screenHalfHeight;
@@ -411,7 +500,7 @@ export function ParticleSystem() {
             settledCountRef.current++;
             settledQueueRef.current.push(i); // 큐에 추가
           } else {
-            // 음악 시작 전이거나 화면 밖이면 리스폰 (계속 내림)
+            // 비 모드, 봄 딜레이 중, 음악 시작 전, 화면 밖이면 리스폰
             positions[i3 + 1] = 10 + Math.random() * 5;
             positions[i3] = (Math.random() - 0.5) * 20;
             // Z축을 카메라에서 멀게 (-6 ~ -1 범위로 제한)
@@ -470,6 +559,11 @@ export function ParticleSystem() {
     shaderMaterial.uniforms.uBeatPump.value = beatPumpRef.current;
     shaderMaterial.uniforms.uBeatPumpSize.value = beatPumpSize;
     shaderMaterial.uniforms.uTransition.value = transitionRef.current;
+    shaderMaterial.uniforms.uRainMode.value = rainTransitionRef.current;
+    shaderMaterial.uniforms.uRainStretch.value = rainSettings.stretch;
+    shaderMaterial.uniforms.uRainSqueeze.value = rainSettings.squeeze;
+    shaderMaterial.uniforms.uRainSwayReduction.value = rainSettings.swayReduction;
+    shaderMaterial.uniforms.uRainSize.value = rainSettings.size;
     shaderMaterial.uniforms.uSizeMultiplier.value = size;
     shaderMaterial.uniforms.uRhythmStrength.value = rhythmStrength;
     shaderMaterial.uniforms.uSwayAmount.value = swayAmount;
@@ -483,7 +577,8 @@ export function ParticleSystem() {
     );
 
     // 봄 모드에서는 Normal Blending 사용 (겹침 시 하얗게 되는 현상 방지)
-    if (transitionRef.current > 0.5) {
+    // 비 모드에서는 Additive Blending 유지
+    if (transitionRef.current > 0.5 && rainTransitionRef.current < 0.3) {
       shaderMaterial.blending = THREE.NormalBlending;
     } else {
       shaderMaterial.blending = THREE.AdditiveBlending;

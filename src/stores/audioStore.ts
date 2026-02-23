@@ -15,7 +15,7 @@ export interface AudioState {
   isTouch: boolean;      // 터치 감지 상태
   showCredits: boolean;  // 크레딧 표시 여부
   hasUserInteracted: boolean; // 사용자 상호작용 여부 (오디오 재생 허용)
-  bgPlaybackTime: number; // background.wav 재생 시간 (초)
+  bgPlaybackTime: number; // background.mp3 재생 시간 (초)
 }
 
 interface AudioStore extends AudioState {

@@ -4,18 +4,18 @@ import { useAudioStore } from '../../stores/audioStore';
 import { updateStep } from '../../hooks/useExhibitionSync';
 
 // 오디오 파일 경로
-const IDLE_AUDIO = '/audio/idle.wav';
-const BG_AUDIO = '/audio/background.wav';
+const IDLE_AUDIO = '/audio/idle.mp3';
+const BG_AUDIO = '/audio/background.mp3';
 
 // 시간 기반 단계 진행 (초)
-const STEP3_TIME = 15;
-const STEP4_TIME = 48;
+const STEP3_TIME = 30;
+const STEP4_TIME = 93;
 
 export function AudioPlayer() {
   const idleAudioRef = useRef<HTMLAudioElement>(null);
   const bgAudioRef = useRef<HTMLAudioElement>(null);
   const animationRef = useRef<number | undefined>(undefined);
-  const playbackTimeRef = useRef(0); // background.wav 실제 재생 시간
+  const playbackTimeRef = useRef(0); // background.mp3 실제 재생 시간
   const lastTimeUpdateRef = useRef(0); // 마지막 timeupdate 시점
   const step3TriggeredRef = useRef(false);
   const step4TriggeredRef = useRef(false);
@@ -55,7 +55,7 @@ export function AudioPlayer() {
     }
   }, [initialize, resume, updateAudioData]);
 
-  // idle.wav 재생
+  // idle.mp3 재생
   const playIdle = useCallback(async () => {
     if (!idleAudioRef.current) return;
 
@@ -69,7 +69,7 @@ export function AudioPlayer() {
       await idleAudioRef.current.play();
       setIsPlaying(true);
     } catch (error) {
-      console.error('idle.wav 재생 실패:', error);
+      console.error('idle.mp3 재생 실패:', error);
     }
   }, [startAudioAnalysis, setIsPlaying]);
 
@@ -78,7 +78,7 @@ export function AudioPlayer() {
     if (!bgAudioRef.current) return;
 
     try {
-      // idle.wav 정지
+      // idle.mp3 정지
       if (idleAudioRef.current) {
         idleAudioRef.current.pause();
       }
@@ -196,10 +196,16 @@ export function AudioPlayer() {
       step3TriggeredRef.current = false;
       step4TriggeredRef.current = false;
 
-      // background.wav 처음으로 되감기
+      // background.mp3 처음으로 되감기
       if (bgAudioRef.current) {
         bgAudioRef.current.pause();
         bgAudioRef.current.currentTime = 0;
+      }
+
+      // idle.mp3도 초기화 (리셋 후 다시 재생되도록)
+      if (idleAudioRef.current) {
+        idleAudioRef.current.pause();
+        idleAudioRef.current.currentTime = 0;
       }
 
       console.log('AudioPlayer: 전시 리셋 - refs 초기화');
@@ -210,8 +216,14 @@ export function AudioPlayer() {
   useEffect(() => {
     if (!hasUserInteracted) return;
 
-    // step2 이상: background.wav 로직
-    if (currentStep >= 2) {
+    // step4 이상: isTouch와 관계없이 background.mp3 계속 재생
+    if (currentStep >= 4) {
+      if (bgAudioRef.current?.paused) {
+        resumeBackground();
+      }
+    }
+    // step2, step3: isTouch에 따라 재생/일시정지
+    else if (currentStep >= 2) {
       if (isTouch) {
         // isTouch=true → background.wav 재생
         if (bgAudioRef.current?.paused) {
@@ -222,9 +234,9 @@ export function AudioPlayer() {
         pauseBackground();
       }
     }
-    // step0 또는 step1: idle.wav 재생
+    // step0 또는 step1: idle.mp3 재생
     else {
-      // background.wav가 재생 중이 아닐 때만 idle.wav 재생
+      // background.wav가 재생 중이 아닐 때만 idle.mp3 재생
       if (bgAudioRef.current?.paused || !bgAudioRef.current) {
         if (idleAudioRef.current?.paused) {
           playIdle();
@@ -238,7 +250,7 @@ export function AudioPlayer() {
     if (!hasUserInteracted) return;
 
     if (currentStep === 2 && isTouch) {
-      // idle.wav 정지하고 background.wav 시작
+      // idle.mp3 정지하고 background.wav 시작
       playBackground();
     }
   }, [currentStep, isTouch, hasUserInteracted, playBackground]);
